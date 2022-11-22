@@ -77,8 +77,8 @@ pid_t start_controller(int &read_fd, int &write_fd) {
         close(write_fds[1]);
         close(read_fds[0]);
         dup2(read_fd, STDIN_FILENO);
-        dup2(empty_fd, STDOUT_FILENO);
-        dup2(empty_fd, STDERR_FILENO);
+        // dup2(empty_fd, STDOUT_FILENO);
+        // dup2(empty_fd, STDERR_FILENO);
         close(empty_fd);
         const char** args = new const char*[4];
         args[0] = "simulator";
@@ -1057,9 +1057,9 @@ TEST(General, Static) {
     ASSERT_EQ(prepare(read_fd, write_fd, controller_pid), 0);
     srand(20221122);
 
-    const int level = 10;
-    const int num_pl = 10;
-    const int edge_pn = 5;
+    const int level = 12;
+    const int num_pl = 8;
+    const int edge_pn = 4;
     const int max_value = 100;
     map<int, int> edge[level][num_pl];
     int du[level][num_pl];
