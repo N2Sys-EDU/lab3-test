@@ -143,8 +143,8 @@ int prepare(int &read_fd, int &write_fd, int &controller_pid) {
 
 static int send(int fd, const char* buf, int len) {
     int times = 0, ret;
-    while(times ++ < 200 && (ret = write(fd, buf, len)) == -1) usleep(50000);
-    if(times == 200) cerr << "GTest: send to simulator failed, simulator may too slow or no response" << endl;
+    while(times ++ < 2000 && (ret = write(fd, buf, len)) == -1) usleep(5000);
+    if(times == 2000) cerr << "GTest: send to simulator failed, simulator may too slow or no response" << endl;
     return ret;
 }
 
@@ -228,8 +228,8 @@ static void send_extersend(int fd, int router, const char* src, const char* dst,
 
 static int recv(int fd, char* buf) {
     int times = 0, ret;
-    while(times ++ < 200 && (ret = read(fd, buf, 9999)) == -1) usleep(50000);
-    if(times == 200) cerr << "GTest: read from simulator failed, simulator may too slow or no response" << endl;
+    while(times ++ < 2000 && (ret = read(fd, buf, 9999)) == -1) usleep(5000);
+    if(times == 2000) cerr << "GTest: read from simulator failed, simulator may too slow or no response" << endl;
     return ret;
 }
 
@@ -1082,14 +1082,14 @@ TEST(General, Static) {
     s2ipv4("22.11.21.0", base_ip);
     for(int i = 0; i < num_pl; i ++) {
         ipv42s(external_addr[i], base_ip);
-        strcat(external_addr[i], "/24");
+        strcat(external_addr[i], "/25");
         ipv42s(exter_addr[i], base_ip + ip_delta * 6);
         base_ip += ip_delta2;
     }
     s2ipv4("21.11.22.0", base_ip);
     for(int i = 0; i < num_pl; i ++) {
         ipv42s(available_addr[i], base_ip);
-        strcat(available_addr[i], "/24");
+        strcat(available_addr[i], "/25");
         base_ip += ip_delta2;
     }
     s2ipv4("10.0.0.0", base_ip);
