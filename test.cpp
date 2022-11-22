@@ -77,8 +77,8 @@ pid_t start_controller(int &read_fd, int &write_fd) {
         close(write_fds[1]);
         close(read_fds[0]);
         dup2(read_fd, STDIN_FILENO);
-        // dup2(empty_fd, STDOUT_FILENO);
-        // dup2(empty_fd, STDERR_FILENO);
+        dup2(empty_fd, STDOUT_FILENO);
+        dup2(empty_fd, STDERR_FILENO);
         close(empty_fd);
         const char** args = new const char*[4];
         args[0] = "controller";
@@ -86,7 +86,7 @@ pid_t start_controller(int &read_fd, int &write_fd) {
         args[2] = to_string(write_fd).c_str();  // pass write fd 
         args[3] = nullptr;
         if(execv("./controller", (char* const*)args) == -1) {
-            cerr << "GTest: Failed to start simulator" << endl;
+            cerr << "GTest: failed to start simulator" << endl;
             exit(-1);
         }
     }
@@ -144,93 +144,93 @@ int prepare(int &read_fd, int &write_fd, int &controller_pid) {
 
 static int send(int fd, char* buf, int len) {
     int times = 0, ret;
-    while(times ++ < 100 && (ret = write(fd, buf, len)) == -1) usleep(50000);
-    if(times == 100) cerr << "GTest: send to simulator failed, simulator may too slow or no response" << endl;
+    while(times ++ < 200 && (ret = write(fd, buf, len)) == -1) usleep(50000);
+    if(times == 200) cerr << "GTest: send to simulator failed, simulator may too slow or no response" << endl;
     return ret;
 }
 
 static void send_exit(int fd) {
     if(send(fd, "exit\n", 5) == -1)
-        cerr << "GTest: failed to send to simulator" << endl;
+        return;
 }
 
 static void send_new(int fd, int port_num, int external_port, char* external_addr, char* available_addr) {
     char buf[256];
     int len = sprintf(buf, "new %d %d %s %s\n", port_num, external_port, external_addr, available_addr);
     if(send(fd, buf, len) == -1)
-        cerr << "GTest: failed to send to simulator" << endl;
+        return;
 }
 
 static void send_ns(int fd) {
     if(send(fd, "ns\n", 3) == -1)
-        cerr << "GTest: failed to send to simulator" << endl;
+        return;
 }
 
 static void send_link(int fd, int router1, int router2, int weight) {
     char buf[256];
     int len = sprintf(buf, "link %d %d %d\n", router1, router2, weight);
     if(send(fd, buf, len) == -1)
-        cerr << "GTest: failed to send to simulator" << endl;
+        return;
 }
 
 static void send_cut(int fd, int router1, int router2) {
     char buf[256];
     int len = sprintf(buf, "cut %d %d\n", router1, router2);
     if(send(fd, buf, len) == -1)
-        cerr << "GTest: failed to send to simulator" << endl;
+        return;
 }
 
 static void send_weight(int fd, int router1, int router2, int weight) {
     char buf[256];
     int len = sprintf(buf, "weight %d %d %d\n", router1, router2, weight);
     if(send(fd, buf, len) == -1)
-        cerr << "GTest: failed to send to simulator" << endl;
+        return;
 }
 
 static void send_addhost(int fd, int router, char* addr) {
     char buf[256];
     int len = sprintf(buf, "addhost %d %s\n", router, addr);
     if(send(fd, buf, len) == -1)
-        cerr << "GTest: failed to send to simulator" << endl;
+        return;
 }
 
 static void send_delhost(int fd, char* addr) {
     char buf[256];
     int len = sprintf(buf, "delhost %s\n", addr);
     if(send(fd, buf, len) == -1)
-        cerr << "GTest: failed to send to simulator" << endl;
+        return;
 }
 
 static void send_trigger(int fd) {
     if(send(fd, "trigger\n", 8) == -1)
-        cerr << "GTest: failed to send to simulator" << endl;
+        return;
 }
 
 static void send_release(int fd, int router, char* addr) {
     char buf[256];
     int len = sprintf(buf, "release %d %s\n", router, addr);
     if(send(fd, buf, len) == -1)
-        cerr << "GTest: failed to send to simulator" << endl;
+        return;
 }
 
 static void send_hostsend(int fd, char* src, char* dst, char* payload) {
     char buf[9999];
     int len = sprintf(buf, "hostsend %s %s %s\n", src, dst, payload);
     if(send(fd, buf, len) == -1)
-        cerr << "GTest: failed to send to simulator" << endl;
+        return;
 }
 
 static void send_extersend(int fd, int router, char* src, char* dst, char* payload) {
     char buf[9999];
     int len = sprintf(buf, "extersend %d %s %s %s\n", router, src, dst, payload);
     if(send(fd, buf, len) == -1)
-        cerr << "GTest: failed to send to simulator" << endl;
+        return;
 }
 
 static int recv(int fd, char* buf) {
     int times = 0, ret;
-    while(times ++ < 1000 && (ret = read(fd, buf, 9999)) == -1) usleep(50000);
-    if(times == 1000) cerr << "GTest: read from simulator failed, simulator may too slow or no response" << endl;
+    while(times ++ < 200 && (ret = read(fd, buf, 9999)) == -1) usleep(50000);
+    if(times == 200) cerr << "GTest: read from simulator failed, simulator may too slow or no response" << endl;
     return ret;
 }
 
@@ -268,8 +268,7 @@ static void send_pretest(int write_fd, int read_fd, int max_round) {
         send_trigger(write_fd);
         send_ns(write_fd);
         recv_ns(read_fd, round);
-        if(round == 1e9) cerr << "GTest: time out when waiting for stable" << endl;
-        EXPECT_NE(round, 65536);
+        if(round == 1e9) cerr << "GTest: time out when waiting for simulator stable" << endl;
         if(round == 65536 ) {
             cerr << "GTest: too many iterations before being stable";
             break;
@@ -281,7 +280,7 @@ static void send_pretest(int write_fd, int read_fd, int max_round) {
 TEST(Routing, Forward) {
     int read_fd, write_fd, controller_pid;
     if(prepare(read_fd, write_fd, controller_pid) != 0) return;
-    srand(19260817);
+    srand(20221122);
 
     send_new(write_fd, 6, 0, "0", "0");
     int id, ret;
@@ -294,7 +293,7 @@ TEST(Routing, Forward) {
     char payload[64], src[256], res_payload[256];
     srand(time(NULL));
     for(int i = 0; i < 63; i ++) payload[i] = rand() % 26 + 'a'; payload[63] = 0;
-    srand(19260817);
+    srand(20221122);
 
     /* between any pair of */
     for(int i = 0; i < 5; i ++)
@@ -318,10 +317,10 @@ TEST(Routing, Forward) {
 TEST(Routing, Accessibility) {
     int read_fd, write_fd, controller_pid;
     if(prepare(read_fd, write_fd, controller_pid) != 0) return;
-    srand(19260817);
+    srand(20221122);
 
-    const int num1 = 2;
-    const int num2 = 5;
+    const int num1 = 20;
+    const int num2 = 50;
 
     set<int> edge[2][105];
     int fa[2][105], du[2][105];
@@ -346,7 +345,7 @@ TEST(Routing, Accessibility) {
             int x = rand() % num2;
             int y = rand() % num2;
             if(x == y || edge[1][x].count(y)) {
-                // i --;
+                i --;
                 continue;
             }
             edge[1][x].insert(y);
@@ -400,7 +399,7 @@ TEST(Routing, Accessibility) {
     char payload[64];
     srand(time(NULL));
     for(int i = 0; i < 63; i ++) payload[i] = rand() % 26 + 'a'; payload[63] = 0;
-    srand(19260817);
+    srand(20221122);
 
     int ret;
     char src[256], res_payload[256];
@@ -437,10 +436,10 @@ TEST(Routing, StaticOptimal) {
     int read_fd, write_fd, controller_pid;
     if(prepare(read_fd, write_fd, controller_pid) != 0) return;
 
-    srand(19260817);
-    const int level = 3; // 10;
-    const int num_pl = 3; // 10;
-    const int edge_pn = 2; // 5;
+    srand(20221122);
+    const int level = 10;
+    const int num_pl = 10;
+    const int edge_pn = 5;
     const int max_value = 100;
     map<int, int> edge[level][num_pl];
     int du[level][num_pl];
@@ -486,7 +485,7 @@ TEST(Routing, StaticOptimal) {
     char payload[64];
     srand(time(NULL));
     for(int i = 0; i < 63; i ++) payload[i] = rand() % 26 + 'a'; payload[63] = 0;
-    srand(19260817);
+    srand(20221122);
 
     int dis[123][123];
     const int inf = 1e9;
@@ -539,7 +538,7 @@ TEST(Routing, StaticOptimal) {
 TEST(Routing, DynamicOptimalAdd) {
     int read_fd, write_fd, controller_pid;
     if(prepare(read_fd, write_fd, controller_pid) != 0) return;
-    srand(19260817);
+    srand(20221122);
 
     const int num = 20;
     map<int, int> edge[123];
@@ -583,7 +582,7 @@ TEST(Routing, DynamicOptimalAdd) {
     char payload[64];
     srand(time(NULL));
     for(int i = 0; i < 63; i ++) payload[i] = rand() % 26 + 'a'; payload[63] = 0;
-    srand(19260817);
+    srand(20221122);
 
     const int round = 10;
     const int modify_num = 5;
@@ -645,7 +644,7 @@ TEST(Routing, DynamicOptimalAdd) {
 TEST(Routing, DynamicOptimalDel) {
     int read_fd, write_fd, controller_pid;
     if(prepare(read_fd, write_fd, controller_pid) != 0) return;
-    srand(19260817);
+    srand(20221122);
 
     const int num = 20;
     map<int, int> edge[123];
@@ -711,7 +710,7 @@ TEST(Routing, DynamicOptimalDel) {
     char payload[64];
     srand(time(NULL));
     for(int i = 0; i < 63; i ++) payload[i] = rand() % 26 + 'a'; payload[63] = 0;
-    srand(19260817);
+    srand(20221122);
 
     const int round = 10;
     const int modify_num = ap_edge / round;
@@ -771,9 +770,9 @@ TEST(Routing, DynamicOptimalDel) {
 TEST(Routing, DynamicOptimalMix) {
     int read_fd, write_fd, controller_pid;
     if(prepare(read_fd, write_fd, controller_pid) != 0) return;
-    srand(19260817);
+    srand(20221122);
 
-    const int num = 20; // 50;
+    const int num = 50;
     map<int, int> edge[123];
     const int max_value = 100;
 
@@ -789,7 +788,7 @@ TEST(Routing, DynamicOptimalMix) {
         du[fa] ++;
     }
 
-    const int ap_edge = 50; // 300;
+    const int ap_edge = 300;
     vector<pair<int, int> > ap_edges;
 
     for(int i = 0; i < ap_edge; i ++) {
@@ -837,7 +836,7 @@ TEST(Routing, DynamicOptimalMix) {
     char payload[64];
     srand(time(NULL));
     for(int i = 0; i < 63; i ++) payload[i] = rand() % 26 + 'a'; payload[63] = 0;
-    srand(19260817);
+    srand(20221122);
 
     const int round = 25;
     const int del_num = ap_edge / round;
@@ -915,7 +914,7 @@ TEST(Routing, DynamicOptimalMix) {
 TEST(NAT, Basic) {
     int read_fd, write_fd, controller_pid;
     if(prepare(read_fd, write_fd, controller_pid) != 0) return;
-    srand(19260817);
+    srand(20221122);
 
     char external_addr[256] = "22.11.21.0/24";
     char available_addr[256] = "21.11.22.0/24";
@@ -932,7 +931,7 @@ TEST(NAT, Basic) {
     char payload[64], res_src[256], res_dst[256], res_payload[256];
     srand(time(NULL));
     for(int i = 0; i < 63; i ++) payload[i] = rand() % 26 + 'a'; payload[63] = 0;
-    srand(19260817);
+    srand(20221122);
 
     for(int i = 0; i < 5; i ++) {
         send_hostsend(write_fd, ips[i], exter_ips[i % 2], payload);
@@ -969,7 +968,7 @@ TEST(NAT, Basic) {
 TEST(NAT, Dynamic) {
     int read_fd, write_fd, controller_pid;
     if(prepare(read_fd, write_fd, controller_pid) != 0) return;
-    srand(19260817);
+    srand(20221122);
 
     char external_addr[256] = "22.11.21.0/24";
     char available_addr[256] = "21.11.22.0/24";
@@ -995,7 +994,7 @@ TEST(NAT, Dynamic) {
     char payload[64], res_src[256], res_dst[256], res_payload[256];
     srand(time(NULL));
     for(int i = 0; i < 63; i ++) payload[i] = rand() % 26 + 'a'; payload[63] = 0;
-    srand(19260817);
+    srand(20221122);
 
     set<string> unique_avail;
     for(int i = 0; i < 256; i ++) {
@@ -1057,11 +1056,11 @@ TEST(NAT, Dynamic) {
 TEST(General, Static) {
     int read_fd, write_fd, controller_pid;
     if(prepare(read_fd, write_fd, controller_pid) != 0) return;
-    srand(19260817);
+    srand(20221122);
 
-    const int level = 3;
-    const int num_pl = 3;
-    const int edge_pn = 2;
+    const int level = 10;
+    const int num_pl = 10;
+    const int edge_pn = 5;
     const int max_value = 100;
     map<int, int> edge[level][num_pl];
     int du[level][num_pl];
@@ -1125,7 +1124,7 @@ TEST(General, Static) {
     char payload[64];
     srand(time(NULL));
     for(int i = 0; i < 63; i ++) payload[i] = rand() % 26 + 'a'; payload[63] = 0;
-    srand(19260817);
+    srand(20221122);
 
     int dis[123][123];
     const int inf = 1e9;
@@ -1150,7 +1149,7 @@ TEST(General, Static) {
 
     int ret;
     char res_src[256], res_dst[256], res_payload[256];
-    const int query_num = min(100, level * num_pl * (level * num_pl - 1) >> 1);
+    const int query_num = min(500, level * num_pl * (level * num_pl - 1) >> 1);
 
     for(int i = 0; i < query_num; i ++) {
         int x1 = rand() % level, y1 = rand() % num_pl;
