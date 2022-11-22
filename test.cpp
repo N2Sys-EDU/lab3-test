@@ -77,8 +77,8 @@ pid_t start_controller(int &read_fd, int &write_fd) {
         close(write_fds[1]);
         close(read_fds[0]);
         dup2(read_fd, STDIN_FILENO);
-        // dup2(empty_fd, STDOUT_FILENO);
-        // dup2(empty_fd, STDERR_FILENO);
+        dup2(empty_fd, STDOUT_FILENO);
+        dup2(empty_fd, STDERR_FILENO);
         close(empty_fd);
         const char** args = new const char*[4];
         args[0] = "simulator";
