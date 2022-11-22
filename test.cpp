@@ -431,6 +431,151 @@ TEST(Routing, Accessibility) {
     EXPECT_GE(retval, 0);
 }
 
+TEST(Routing, DynamicAccessibility) {
+    int read_fd, write_fd, controller_pid;
+    ASSERT_EQ(prepare(read_fd, write_fd, controller_pid), 0);
+    srand(20221122);
+
+    const int num = 20;
+
+    set<int> edge[105];
+    vector<pair<int ,int> > edge_list;
+    int fa[105], du[105], del[105];
+    {
+        memset(fa, 0, sizeof(fa));
+        memset(du, 0, sizeof(du));
+        memset(del, 0 , sizeof(del));
+        for(int i = 1; i < num; i ++) {
+            fa[i] = rand() % i;
+            du[i] = 1;
+            du[fa[i]] ++;
+            edge[i].insert(fa[i]);
+            edge[fa[i]].insert(i);
+            edge_list.push_back(make_pair(i, fa[i]));
+        }
+        for(int i = 0; i < 10; i ++) {
+            int x = rand() % num;
+            int y = rand() % num;
+            if(x == y || edge[x].count(y)) {
+                i --;
+                continue;
+            }
+            edge[x].insert(y);
+            edge[y].insert(x);
+            edge_list.push_back(make_pair(x, y));
+            du[x] ++;
+            du[y] ++;
+        }
+    }
+
+    int ids[105], max_round = 0;
+    for(int i = 0; i < num; i ++) {
+        max_round = max(max_round, du[i] + 1);
+        send_new(write_fd, 2 + num, 0, "0", "0");
+        int ret = recv_new(read_fd, ids[i]);
+        ASSERT_NE(ret, -1);
+    }
+
+    char ips[105][255];
+    uint32_t base_ip;
+    s2ipv4("10.0.0.0", base_ip);
+    for(int i = 0; i < num; i ++) {
+        ipv42s(ips[i], base_ip);
+        base_ip += ip_delta;
+    }
+
+    for(int i = 0; i < num; i ++) send_addhost(write_fd, ids[i], ips[i]);
+
+    for(int i = 0; i < num; i ++)
+        for(auto j : edge[i]) {
+            if(j >= i) continue;
+            send_link(write_fd, ids[i], ids[j], 1);
+        }
+
+    send_pretest(write_fd, read_fd, max_round);
+    char payload[64];
+    srand(time(NULL));
+    for(int i = 0; i < 63; i ++) payload[i] = rand() % 26 + 'a'; payload[63] = 0;
+    srand(20221122);
+
+    const int total_round = 10;
+    const int host_change_num = 3;
+    const int edge_link_num = 3;
+    const int edge_del_num = 3;
+    const int query_num = 30;
+
+    int ret;
+    char src[256], res_payload[256];
+    for(int t = 0; t < total_round; t ++) {
+        random_shuffle(edge_list.begin(), edge_list.end());
+        for(int i = 0; i < host_change_num; i ++) {
+            int x = rand() % num;
+            if(del[x]) send_addhost(write_fd, ids[x], ips[x]);
+            else send_delhost(write_fd, ips[x]);
+            del[x] ^= 1;
+        }
+        for(int i = 0; i < edge_del_num; i ++) {
+            int x = (*(edge_list.end() - 1)).first;
+            int y = (*(edge_list.end() - 1)).second;
+            edge_list.pop_back();
+            send_cut(write_fd, ids[x], ids[y]);
+            edge[x].erase(y);
+            edge[y].erase(x);
+            du[x] --;
+            du[y] --;
+        }
+        for(int i = 0; i < edge_link_num; i ++) {
+            int x = rand() % num;
+            int y = rand() % num;
+            while(x == y || edge[x].count(y)) {
+                x = rand() % num;
+                y = rand() % num;
+            }
+            send_link(write_fd, ids[x], ids[y], 1);
+            edge[x].insert(y);
+            edge[y].insert(x);
+            edge_list.push_back(make_pair(x, y));
+            du[x] ++;
+            du[y] ++;
+        }
+
+        int max_round = 0;
+        for(int i = 0; i < num; i ++) max_round = max(max_round, du[i] + 1);
+
+        send_pretest(write_fd, read_fd, max_round);
+        int dis[123][123];
+        const int inf = 1e9;
+        {
+            for(int i = 0; i < num; i ++)
+                for(int j = 0; j < num; j ++) dis[i][j] = inf;
+            for(int i = 0; i < num; i ++) dis[i][i] = 0;
+            for(int i = 0; i < num; i ++)
+                for(auto j : edge[i]) dis[i][j] = 1;
+            for(int k = 0; k < num; k ++)
+            for(int i = 0; i < num; i ++)
+            for(int j = 0; j < num; j ++) dis[i][j] = min(dis[i][j], dis[i][k] + dis[k][j]);
+        }
+
+        for(int i = 0; i < query_num; i ++) {
+            int x = rand() % num;
+            while(del[x]) x = rand() % num;
+            int y = rand() % num;
+            while(y == x) y = rand() % num;
+            send_hostsend(write_fd, ips[x], ips[y], payload);
+            recv_hostsend(read_fd, ret, src, res_payload);
+            if(dis[ids[x]][ids[y]] < inf) {
+                ASSERT_GE(ret, 0);
+                ASSERT_EQ(strcmp(payload, res_payload), 0);
+            }
+            else ASSERT_EQ(ret, -2);
+        }
+    }
+
+    send_exit(write_fd);
+    int retval = wait_exit(controller_pid);
+    EXPECT_GE(retval, 0);
+}
+
 TEST(Routing, StaticOptimal) {
     int read_fd, write_fd, controller_pid;
     ASSERT_EQ(prepare(read_fd, write_fd, controller_pid), 0);
@@ -778,6 +923,7 @@ TEST(Routing, DynamicOptimalMix) {
     int du[123];
     memset(du, 0, sizeof(du));
 
+    vector<pair<int, int> > ori_edges;
     for(int i = 1; i < num; i ++) {
         int fa = rand() % i;
         int value = rand() % max_value + 1 + max_value;
@@ -785,6 +931,7 @@ TEST(Routing, DynamicOptimalMix) {
         edge[fa][i] = value;
         du[i] ++;
         du[fa] ++;
+        ori_edges.push_back(make_pair(i, fa));
     }
 
     const int ap_edge = 200;
@@ -840,6 +987,7 @@ TEST(Routing, DynamicOptimalMix) {
     const int round = 25;
     const int del_num = ap_edge / round;
     const int add_num = del_num >> 1;
+    const int change_num = 2;
     const int query_num = 30;
     
     for(int t = 0; t < round; t ++) {
@@ -869,6 +1017,23 @@ TEST(Routing, DynamicOptimalMix) {
             du[y] ++;
         }
         random_shuffle(ap_edges.begin(), ap_edges.end());
+
+        for(int r = 0; r < change_num; r ++) {
+            int select = rand() & 1;
+            int x, y, v = rand() % (max_value << 1) + 1;
+            if(select) {
+                int idx = rand() % ori_edges.size();
+                x = ori_edges[idx].first;
+                y = ori_edges[idx].second;
+            }
+            else {
+                int idx = rand() % ap_edges.size();
+                x = ap_edges[idx].first;
+                y = ap_edges[idx].second;
+            }
+            edge[x][y] = edge[y][x] = v;
+            send_weight(write_fd, ids[x], ids[y], v);
+        }
 
         int max_round = 0;
         for(int i = 0; i < num; i ++) max_round = max(max_round, du[i] + 1);
