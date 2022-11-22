@@ -137,12 +137,11 @@ int wait_exit(pid_t pid) {
 
 int prepare(int &read_fd, int &write_fd, int &controller_pid) {
     controller_pid = start_controller(read_fd, write_fd);
-    EXPECT_GT(controller_pid, 0);
     if(controller_pid <= 0) return -1;
     return 0;
 }
 
-static int send(int fd, char* buf, int len) {
+static int send(int fd, const char* buf, int len) {
     int times = 0, ret;
     while(times ++ < 200 && (ret = write(fd, buf, len)) == -1) usleep(50000);
     if(times == 200) cerr << "GTest: send to simulator failed, simulator may too slow or no response" << endl;
@@ -154,7 +153,7 @@ static void send_exit(int fd) {
         return;
 }
 
-static void send_new(int fd, int port_num, int external_port, char* external_addr, char* available_addr) {
+static void send_new(int fd, int port_num, int external_port, const char* external_addr, const char* available_addr) {
     char buf[256];
     int len = sprintf(buf, "new %d %d %s %s\n", port_num, external_port, external_addr, available_addr);
     if(send(fd, buf, len) == -1)
@@ -207,7 +206,7 @@ static void send_trigger(int fd) {
 }
 
 static void send_release(int fd, int router, char* addr) {
-    char buf[256];
+    char buf[512];
     int len = sprintf(buf, "release %d %s\n", router, addr);
     if(send(fd, buf, len) == -1)
         return;
@@ -220,7 +219,7 @@ static void send_hostsend(int fd, char* src, char* dst, char* payload) {
         return;
 }
 
-static void send_extersend(int fd, int router, char* src, char* dst, char* payload) {
+static void send_extersend(int fd, int router, const char* src, const char* dst, char* payload) {
     char buf[9999];
     int len = sprintf(buf, "extersend %d %s %s %s\n", router, src, dst, payload);
     if(send(fd, buf, len) == -1)
@@ -279,13 +278,13 @@ static void send_pretest(int write_fd, int read_fd, int max_round) {
 /* Routing TEST will not use NAT */
 TEST(Routing, Forward) {
     int read_fd, write_fd, controller_pid;
-    if(prepare(read_fd, write_fd, controller_pid) != 0) return;
+    ASSERT_EQ(prepare(read_fd, write_fd, controller_pid), 0);
     srand(20221122);
 
     send_new(write_fd, 6, 0, "0", "0");
     int id, ret;
     ret = recv_new(read_fd, id);
-    EXPECT_NE(ret, -1);
+    ASSERT_NE(ret, -1);
 
     char ips[6][255] = {"10.0.0.0", "10.0.0.1", "10.0.0.2", "10.0.0.3", "10.0.0.4", "10.0.0.5"};
     for(int i = 0; i < 5; i ++) send_addhost(write_fd, id, ips[i]);
@@ -301,13 +300,13 @@ TEST(Routing, Forward) {
             if(i == j) continue;
             send_hostsend(write_fd, ips[i], ips[j], payload);
             recv_hostsend(read_fd, ret, src, res_payload);
-            EXPECT_EQ(ret, 0);
-            EXPECT_EQ(strcmp(payload, res_payload), 0);
+            ASSERT_EQ(ret, 0);
+            ASSERT_EQ(strcmp(payload, res_payload), 0);
         }
     
     send_hostsend(write_fd, ips[0], ips[5], payload);
     recv_hostsend(read_fd, ret, src, res_payload);
-    EXPECT_EQ(ret, -2);
+    ASSERT_EQ(ret, -2);
 
     send_exit(write_fd);
     int retval = wait_exit(controller_pid);
@@ -316,7 +315,7 @@ TEST(Routing, Forward) {
 
 TEST(Routing, Accessibility) {
     int read_fd, write_fd, controller_pid;
-    if(prepare(read_fd, write_fd, controller_pid) != 0) return;
+    ASSERT_EQ(prepare(read_fd, write_fd, controller_pid), 0);
     srand(20221122);
 
     const int num1 = 20;
@@ -360,13 +359,13 @@ TEST(Routing, Accessibility) {
         max_round = max(max_round, du[0][i] + 1);
         send_new(write_fd, 2 + du[0][i], 0, "0", "0");
         int ret = recv_new(read_fd, ids[0][i]);
-        EXPECT_NE(ret, -1);
+        ASSERT_NE(ret, -1);
     }
     for(int i = 0; i < num2; i ++) {
         max_round = max(max_round, du[1][i] + 1);
         send_new(write_fd, 2 + du[1][i], 0, "0", "0");
         int ret = recv_new(read_fd, ids[1][i]);
-        EXPECT_NE(ret, -1);
+        ASSERT_NE(ret, -1);
     }
 
     char ips[2][105][255];
@@ -408,23 +407,23 @@ TEST(Routing, Accessibility) {
         while(y == x) y = rand() % num1;
         send_hostsend(write_fd, ips[0][x], ips[0][y], payload);
         recv_hostsend(read_fd, ret, src, res_payload);
-        EXPECT_GE(ret, 0);
-        EXPECT_EQ(strcmp(payload, res_payload), 0);
-        EXPECT_EQ(strcmp(src, ips[0][x]), 0);
+        ASSERT_GE(ret, 0);
+        ASSERT_EQ(strcmp(payload, res_payload), 0);
+        ASSERT_EQ(strcmp(src, ips[0][x]), 0);
     }
     for(int i = 0; i < 10; i ++) {
         int x = rand() % num2, y = rand() % num2;
         while(y == x) y = rand() % num2;
         send_hostsend(write_fd, ips[1][x], ips[1][y], payload);
         recv_hostsend(read_fd, ret, src, res_payload);
-        EXPECT_GE(ret, 0);
-        EXPECT_EQ(strcmp(payload, res_payload), 0);
+        ASSERT_GE(ret, 0);
+        ASSERT_EQ(strcmp(payload, res_payload), 0);
     }
     for(int i = 0; i < 10; i ++) {
         int x = rand() % num1, y = rand() % num2;
         send_hostsend(write_fd, ips[0][x], ips[1][y], payload);
         recv_hostsend(read_fd, ret, src, res_payload);
-        EXPECT_EQ(ret, -2);
+        ASSERT_EQ(ret, -2);
     }
 
     send_exit(write_fd);
@@ -434,7 +433,7 @@ TEST(Routing, Accessibility) {
 
 TEST(Routing, StaticOptimal) {
     int read_fd, write_fd, controller_pid;
-    if(prepare(read_fd, write_fd, controller_pid) != 0) return;
+    ASSERT_EQ(prepare(read_fd, write_fd, controller_pid), 0);
 
     srand(20221122);
     const int level = 10;
@@ -523,10 +522,10 @@ TEST(Routing, StaticOptimal) {
         recv_hostsend(read_fd, ret, src, res_payload);
         int ans = dis[ids[x1][y1]][ids[x2][y2]];
         if(ans < inf) { 
-            EXPECT_EQ(ret, ans);
-            EXPECT_EQ(strcmp(payload, res_payload), 0);
+            ASSERT_EQ(ret, ans);
+            ASSERT_EQ(strcmp(payload, res_payload), 0);
         }
-        else EXPECT_EQ(ret, -2);
+        else ASSERT_EQ(ret, -2);
     }
 
     send_exit(write_fd);
@@ -537,7 +536,7 @@ TEST(Routing, StaticOptimal) {
 /* add edge on tree */
 TEST(Routing, DynamicOptimalAdd) {
     int read_fd, write_fd, controller_pid;
-    if(prepare(read_fd, write_fd, controller_pid) != 0) return;
+    ASSERT_EQ(prepare(read_fd, write_fd, controller_pid), 0);
     srand(20221122);
 
     const int num = 20;
@@ -630,9 +629,9 @@ TEST(Routing, DynamicOptimalAdd) {
             send_hostsend(write_fd, ips[x], ips[y], payload);
             recv_hostsend(read_fd, ret, src, res_payload);
             int ans = dis[x][y];
-            if(ans < inf) EXPECT_EQ(ret, ans);
-            else EXPECT_EQ(ret, -2);
-            EXPECT_EQ(strcmp(payload, res_payload), 0);
+            if(ans < inf) ASSERT_EQ(ret, ans);
+            else ASSERT_EQ(ret, -2);
+            ASSERT_EQ(strcmp(payload, res_payload), 0);
         }
     }
 
@@ -643,7 +642,7 @@ TEST(Routing, DynamicOptimalAdd) {
 
 TEST(Routing, DynamicOptimalDel) {
     int read_fd, write_fd, controller_pid;
-    if(prepare(read_fd, write_fd, controller_pid) != 0) return;
+    ASSERT_EQ(prepare(read_fd, write_fd, controller_pid), 0);
     srand(20221122);
 
     const int num = 20;
@@ -756,9 +755,9 @@ TEST(Routing, DynamicOptimalDel) {
             send_hostsend(write_fd, ips[x], ips[y], payload);
             recv_hostsend(read_fd, ret, src, res_payload);
             int ans = dis[x][y];
-            if(ans < inf) EXPECT_EQ(ret, ans);
-            else EXPECT_EQ(ret, -2);
-            EXPECT_EQ(strcmp(payload, res_payload), 0);
+            if(ans < inf) ASSERT_EQ(ret, ans);
+            else ASSERT_EQ(ret, -2);
+            ASSERT_EQ(strcmp(payload, res_payload), 0);
         }
     }
 
@@ -769,7 +768,7 @@ TEST(Routing, DynamicOptimalDel) {
 
 TEST(Routing, DynamicOptimalMix) {
     int read_fd, write_fd, controller_pid;
-    if(prepare(read_fd, write_fd, controller_pid) != 0) return;
+    ASSERT_EQ(prepare(read_fd, write_fd, controller_pid), 0);
     srand(20221122);
 
     const int num = 50;
@@ -898,9 +897,9 @@ TEST(Routing, DynamicOptimalMix) {
             send_hostsend(write_fd, ips[x], ips[y], payload);
             recv_hostsend(read_fd, ret, src, res_payload);
             int ans = dis[x][y];
-            if(ans < inf) EXPECT_EQ(ret, ans);
-            else EXPECT_EQ(ret, -2);
-            EXPECT_EQ(strcmp(payload, res_payload), 0);
+            if(ans < inf) ASSERT_EQ(ret, ans);
+            else ASSERT_EQ(ret, -2);
+            ASSERT_EQ(strcmp(payload, res_payload), 0);
         }
     }
 
@@ -913,7 +912,7 @@ TEST(Routing, DynamicOptimalMix) {
 /* using only one router to test */
 TEST(NAT, Basic) {
     int read_fd, write_fd, controller_pid;
-    if(prepare(read_fd, write_fd, controller_pid) != 0) return;
+    ASSERT_EQ(prepare(read_fd, write_fd, controller_pid), 0);
     srand(20221122);
 
     char external_addr[256] = "22.11.21.0/24";
@@ -936,28 +935,28 @@ TEST(NAT, Basic) {
     for(int i = 0; i < 5; i ++) {
         send_hostsend(write_fd, ips[i], exter_ips[i % 2], payload);
         recv_hostsend(read_fd, ret, avail_ips[i], res_payload);
-        EXPECT_EQ(ret, 0);
-        EXPECT_EQ(strcmp(payload, res_payload), 0);
-        EXPECT_EQ(is_sub_addr(avail_ips[i], available_addr), true);
+        ASSERT_EQ(ret, 0);
+        ASSERT_EQ(strcmp(payload, res_payload), 0);
+        ASSERT_EQ(is_sub_addr(avail_ips[i], available_addr), true);
     }
     for(int i = 0; i < 5; i ++) {
         send_extersend(write_fd, id, exter_ips[i % 2], avail_ips[i], payload);
         recv_extersend(read_fd, ret, res_src, res_dst, res_payload);
-        EXPECT_EQ(ret, 0);
-        EXPECT_EQ(strcmp(res_dst, ips[i]), 0);
-        EXPECT_EQ(strcmp(payload, res_payload), 0);
+        ASSERT_EQ(ret, 0);
+        ASSERT_EQ(strcmp(res_dst, ips[i]), 0);
+        ASSERT_EQ(strcmp(payload, res_payload), 0);
     }
     for(int i = 0; i < 5; i ++) {
         send_hostsend(write_fd, ips[i], exter_ips[i % 2], payload);
         recv_hostsend(read_fd, ret, res_src, res_payload);
-        EXPECT_EQ(ret, 0);
-        EXPECT_EQ(strcmp(res_src, avail_ips[i]), 0);
-        EXPECT_EQ(strcmp(payload, res_payload), 0);
+        ASSERT_EQ(ret, 0);
+        ASSERT_EQ(strcmp(res_src, avail_ips[i]), 0);
+        ASSERT_EQ(strcmp(payload, res_payload), 0);
     }
 
     send_extersend(write_fd, id, exter_ips[0], "10.0.0.0", payload);
     recv_extersend(read_fd, ret, res_src, res_dst, res_payload);
-    EXPECT_EQ(ret, -4); // drop
+    ASSERT_EQ(ret, -4); // drop
 
     send_exit(write_fd);
     int retval = wait_exit(controller_pid);
@@ -967,7 +966,7 @@ TEST(NAT, Basic) {
 /* considering release command */
 TEST(NAT, Dynamic) {
     int read_fd, write_fd, controller_pid;
-    if(prepare(read_fd, write_fd, controller_pid) != 0) return;
+    ASSERT_EQ(prepare(read_fd, write_fd, controller_pid), 0);
     srand(20221122);
 
     char external_addr[256] = "22.11.21.0/24";
@@ -1000,51 +999,51 @@ TEST(NAT, Dynamic) {
     for(int i = 0; i < 256; i ++) {
         send_hostsend(write_fd, ips[i], exter_ip, payload);
         recv_hostsend(read_fd, ret, avail_ips[i], res_payload);
-        EXPECT_EQ(ret, 0);
-        EXPECT_EQ(strcmp(payload, res_payload), 0);
-        EXPECT_EQ(is_sub_addr(avail_ips[i], available_addr), true);
-        EXPECT_EQ(unique_avail.count(string(avail_ips[i])), 0);
+        ASSERT_EQ(ret, 0);
+        ASSERT_EQ(strcmp(payload, res_payload), 0);
+        ASSERT_EQ(is_sub_addr(avail_ips[i], available_addr), true);
+        ASSERT_EQ(unique_avail.count(string(avail_ips[i])), 0);
         unique_avail.insert(string(avail_ips[i]));
     }
     for(int i = 0; i < 256; i ++) {
         send_extersend(write_fd, id, exter_ip, avail_ips[i], payload);
         recv_extersend(read_fd, ret, res_src, res_dst, res_payload);
-        EXPECT_EQ(ret, 0);
-        EXPECT_EQ(strcmp(res_dst, ips[i]), 0);
-        EXPECT_EQ(strcmp(payload, res_payload), 0);
+        ASSERT_EQ(ret, 0);
+        ASSERT_EQ(strcmp(res_dst, ips[i]), 0);
+        ASSERT_EQ(strcmp(payload, res_payload), 0);
     }
     for(int i = 0; i < 256; i ++) {
         send_hostsend(write_fd, ips[i], exter_ip, payload);
         recv_hostsend(read_fd, ret, res_src, res_payload);
-        EXPECT_EQ(ret, 0);
-        EXPECT_EQ(strcmp(res_src, avail_ips[i]), 0);
-        EXPECT_EQ(strcmp(payload, res_payload), 0);
+        ASSERT_EQ(ret, 0);
+        ASSERT_EQ(strcmp(res_src, avail_ips[i]), 0);
+        ASSERT_EQ(strcmp(payload, res_payload), 0);
     }
 
     for(int i = 0; i < 5; i ++) {
         send_hostsend(write_fd, mips[i], exter_ip, payload);
         recv_hostsend(read_fd, ret, res_src, res_payload);
-        EXPECT_EQ(ret, -4);
+        ASSERT_EQ(ret, -4);
     }
 
     send_release(write_fd, id, ips[0]);
     send_pretest(write_fd, read_fd, 2);
     send_extersend(write_fd, id, exter_ip, avail_ips[0], payload);
     recv_extersend(read_fd, ret, res_src, res_dst, res_payload);
-    EXPECT_EQ(ret, -4);
+    ASSERT_EQ(ret, -4);
     send_hostsend(write_fd, mips[0], exter_ip, payload);
     recv_hostsend(read_fd, ret, res_src, res_payload);
-    EXPECT_EQ(ret, 0);
-    EXPECT_EQ(strcmp(payload, res_payload), 0);
-    EXPECT_EQ(strcmp(res_src, avail_ips[0]), 0);
+    ASSERT_EQ(ret, 0);
+    ASSERT_EQ(strcmp(payload, res_payload), 0);
+    ASSERT_EQ(strcmp(res_src, avail_ips[0]), 0);
     send_extersend(write_fd, id, exter_ip, avail_ips[0], payload);
     recv_extersend(read_fd, ret, res_src, res_dst, res_payload);
-    EXPECT_EQ(ret, 0);
-    EXPECT_EQ(strcmp(res_dst, mips[0]), 0);
-    EXPECT_EQ(strcmp(payload, res_payload), 0);
+    ASSERT_EQ(ret, 0);
+    ASSERT_EQ(strcmp(res_dst, mips[0]), 0);
+    ASSERT_EQ(strcmp(payload, res_payload), 0);
     send_hostsend(write_fd, mips[2], exter_ip, payload);
     recv_hostsend(read_fd, ret, res_src, res_payload);
-    EXPECT_EQ(ret, -4);
+    ASSERT_EQ(ret, -4);
 
     send_exit(write_fd);
     int retval = wait_exit(controller_pid);
@@ -1055,7 +1054,7 @@ TEST(NAT, Dynamic) {
 /* No modification */
 TEST(General, Static) {
     int read_fd, write_fd, controller_pid;
-    if(prepare(read_fd, write_fd, controller_pid) != 0) return;
+    ASSERT_EQ(prepare(read_fd, write_fd, controller_pid), 0);
     srand(20221122);
 
     const int level = 10;
@@ -1162,10 +1161,10 @@ TEST(General, Static) {
         recv_hostsend(read_fd, ret, res_src, res_payload);
         int ans = dis[ids[x1][y1]][ids[x2][y2]];
         if(ans < inf) {
-            EXPECT_EQ(ret, ans);
-            EXPECT_EQ(strcmp(payload, res_payload), 0);
+            ASSERT_EQ(ret, ans);
+            ASSERT_EQ(strcmp(payload, res_payload), 0);
         }
-        else EXPECT_EQ(ret, -2);
+        else ASSERT_EQ(ret, -2);
     }
 
     char alloc_addr[level][num_pl][num_pl][255];
@@ -1178,13 +1177,13 @@ TEST(General, Static) {
         recv_hostsend(read_fd, ret, alloc_addr[i][j][k], res_payload);
         int ans = dis[ids[i][j]][ids[0][k]];
         if(ans < inf) {
-            EXPECT_EQ(ret, ans);
-            EXPECT_EQ(strcmp(payload, res_payload), 0);
-            EXPECT_EQ(is_sub_addr(alloc_addr[i][j][k], available_addr[k]), true);
-            EXPECT_EQ(unique_avail[k].count(string(alloc_addr[i][j][k])), 0);
+            ASSERT_EQ(ret, ans);
+            ASSERT_EQ(strcmp(payload, res_payload), 0);
+            ASSERT_EQ(is_sub_addr(alloc_addr[i][j][k], available_addr[k]), true);
+            ASSERT_EQ(unique_avail[k].count(string(alloc_addr[i][j][k])), 0);
             unique_avail[k].insert(string(alloc_addr[i][j][k]));
         }
-        else EXPECT_EQ(ret, -2);
+        else ASSERT_EQ(ret, -2);
     }
     for(int i = 0; i < level; i ++)
     for(int j = 0; j < num_pl; j ++)
@@ -1193,11 +1192,11 @@ TEST(General, Static) {
         recv_extersend(read_fd, ret, res_src, res_dst, res_payload);
         int ans = dis[ids[i][j]][ids[0][k]];
         if(ans < inf) {
-            EXPECT_EQ(ret, ans);
-            EXPECT_EQ(strcmp(res_dst, ips[i][j]), 0);
-            EXPECT_EQ(strcmp(payload, res_payload), 0);
+            ASSERT_EQ(ret, ans);
+            ASSERT_EQ(strcmp(res_dst, ips[i][j]), 0);
+            ASSERT_EQ(strcmp(payload, res_payload), 0);
         }
-        else EXPECT_EQ(ret, -4);
+        else ASSERT_EQ(ret, -4);
     }
 
     send_exit(write_fd);
