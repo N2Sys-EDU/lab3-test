@@ -81,11 +81,11 @@ pid_t start_controller(int &read_fd, int &write_fd) {
         dup2(empty_fd, STDERR_FILENO);
         close(empty_fd);
         const char** args = new const char*[4];
-        args[0] = "controller";
+        args[0] = "simulator";
         args[1] = "1";                          // test mode
         args[2] = to_string(write_fd).c_str();  // pass write fd 
         args[3] = nullptr;
-        if(execv("./controller", (char* const*)args) == -1) {
+        if(execv("./simulator", (char* const*)args) == -1) {
             cerr << "GTest: failed to start simulator" << endl;
             exit(-1);
         }
