@@ -284,7 +284,8 @@ TEST(Routing, Forward) {
     send_pretest(write_fd, read_fd, 2);
     char payload[64], src[256], res_payload[256];
     srand(time(NULL));
-    for(int i = 0; i < 63; i ++) payload[i] = rand() % 26 + 'a'; payload[63] = 0;
+    for(int i = 0; i < 63; i ++) payload[i] = rand() % 26 + 'a'; 
+    payload[63] = 0;
     srand(20221122);
 
     /* between any pair of */
@@ -373,9 +374,6 @@ TEST(Routing, Accessibility) {
         base_ip += ip_delta;
     }
 
-    for(int i = 0; i < num1; i ++) send_addhost(write_fd, ids[0][i], ips[0][i]);
-    for(int i = 0; i < num2; i ++) send_addhost(write_fd, ids[1][i], ips[1][i]);
-
     for(int i = 0; i < num1; i ++)
         for(auto j : edge[0][i]) {
             if(j >= i) continue;
@@ -388,9 +386,15 @@ TEST(Routing, Accessibility) {
         }
 
     send_pretest(write_fd, read_fd, max_round);
+
+    for(int i = 0; i < num1; i ++) send_addhost(write_fd, ids[0][i], ips[0][i]);
+    for(int i = 0; i < num2; i ++) send_addhost(write_fd, ids[1][i], ips[1][i]);
+
+    send_pretest(write_fd, read_fd, max_round);
     char payload[64];
     srand(time(NULL));
-    for(int i = 0; i < 63; i ++) payload[i] = rand() % 26 + 'a'; payload[63] = 0;
+    for(int i = 0; i < 63; i ++) payload[i] = rand() % 26 + 'a'; 
+    payload[63] = 0;
     srand(20221122);
 
     int ret;
@@ -429,22 +433,23 @@ TEST(Routing, StaticOptimal) {
     ASSERT_EQ(prepare(read_fd, write_fd, controller_pid), 0);
 
     srand(20221122);
-    const int level = 10;
+    const int level = 8;
     const int num_pl = 10;
-    const int edge_pn = 5;
+    const int edge_pn = 2;
     const int max_value = 100;
     map<int, int> edge[level][num_pl];
     int du[level][num_pl];
     memset(du, 0 , sizeof(du));
 
     for(int i = 0; i < level - 1; i ++)
-        for(int j = 0; j < num_pl; j ++) {
-            int x = rand() % num_pl;
-            while(edge[i][j].count(x)) x = rand() % num_pl;
-            edge[i][j][x] = rand() % max_value + 1;
-            du[i][j] ++;
-            du[i + 1][x] ++;
-        }
+        for(int j = 0; j < num_pl; j ++) 
+            for(int k = 0; k < edge_pn; k ++) {
+                int x = rand() % num_pl;
+                while(edge[i][j].count(x)) x = rand() % num_pl;
+                edge[i][j][x] = rand() % max_value + 1;
+                du[i][j] ++;
+                du[i + 1][x] ++;
+            }
 
     int ids[level][num_pl], max_round = 0;
     char ips[level][num_pl][255];
@@ -458,6 +463,15 @@ TEST(Routing, StaticOptimal) {
             int ret = recv_new(read_fd, ids[i][j]);
             EXPECT_NE(ret, -1);
         }
+    
+    for(int i = 0; i < level - 1; i ++) {
+        for(int j = 0; j < num_pl; j ++)
+            for(auto p : edge[i][j]) {
+                int y = p.first, v = p.second;
+                send_link(write_fd, ids[i][j], ids[i + 1][y], v);
+            }
+        send_pretest(write_fd, read_fd, max_round);
+    }
 
     for(int i = 0; i < level; i ++)
         for(int j = 0; j < num_pl; j ++) {
@@ -466,17 +480,11 @@ TEST(Routing, StaticOptimal) {
             send_addhost(write_fd, ids[i][j], ips[i][j]);
         }
     
-    for(int i = 0; i < level - 1; i ++)
-        for(int j = 0; j < num_pl; j ++)
-            for(auto p : edge[i][j]) {
-                int y = p.first, v = p.second;
-                send_link(write_fd, ids[i][j], ids[i + 1][y], v);
-            }
-    
     send_pretest(write_fd, read_fd, max_round);
     char payload[64];
     srand(time(NULL));
-    for(int i = 0; i < 63; i ++) payload[i] = rand() % 26 + 'a'; payload[63] = 0;
+    for(int i = 0; i < 63; i ++) payload[i] = rand() % 26 + 'a'; 
+    payload[63] = 0;
     srand(20221122);
 
     int dis[123][123];
@@ -559,21 +567,30 @@ TEST(Routing, DynamicOptimalAdd) {
         EXPECT_NE(ret, -1);
     }
 
-    for(int i = 0; i < num; i ++) {
-        ipv42s(ips[i], base_ip);
-        base_ip += ip_delta;
-        send_addhost(write_fd, ids[i], ips[i]);
-    }
-
     for(int i = 0; i < num; i ++)
         for(auto j : edge[i]) {
             if(i <= j.first) continue;
             send_link(write_fd, ids[i], ids[j.first], j.second);
         }
+
+    int max_round = 0;
+    for(int i = 0; i < num; i ++) max_round = max(max_round, du[i] + 1);
+    send_pretest(write_fd, read_fd, max_round);
+
+    for(int i = 0; i < num; i ++) {
+        ipv42s(ips[i], base_ip);
+        base_ip += ip_delta;
+        send_addhost(write_fd, ids[i], ips[i]);
+    }
     
+    max_round = 0;
+    for(int i = 0; i < num; i ++) max_round = max(max_round, du[i] + 1);
+    send_pretest(write_fd, read_fd, max_round);
+
     char payload[64];
     srand(time(NULL));
-    for(int i = 0; i < 63; i ++) payload[i] = rand() % 26 + 'a'; payload[63] = 0;
+    for(int i = 0; i < 63; i ++) payload[i] = rand() % 26 + 'a'; 
+    payload[63] = 0;
     srand(20221122);
 
     const int round = 10;
@@ -683,12 +700,6 @@ TEST(Routing, DynamicOptimalDel) {
         EXPECT_NE(ret, -1);
     }
 
-    for(int i = 0; i < num; i ++) {
-        ipv42s(ips[i], base_ip);
-        base_ip += ip_delta;
-        send_addhost(write_fd, ids[i], ips[i]);
-    }
-
     for(int i = 0; i < num; i ++)
         for(auto j : edge[i]) {
             if(i <= j.first) continue;
@@ -699,9 +710,20 @@ TEST(Routing, DynamicOptimalDel) {
     for(int i = 0; i < num; i ++) max_round = max(max_round, du[i] + 1);
     send_pretest(write_fd, read_fd, max_round);
 
+    for(int i = 0; i < num; i ++) {
+        ipv42s(ips[i], base_ip);
+        base_ip += ip_delta;
+        send_addhost(write_fd, ids[i], ips[i]);
+    }
+
+    max_round = 0;
+    for(int i = 0; i < num; i ++) max_round = max(max_round, du[i] + 1);
+    send_pretest(write_fd, read_fd, max_round);
+
     char payload[64];
     srand(time(NULL));
-    for(int i = 0; i < 63; i ++) payload[i] = rand() % 26 + 'a'; payload[63] = 0;
+    for(int i = 0; i < 63; i ++) payload[i] = rand() % 26 + 'a'; 
+    payload[63] = 0;
     srand(20221122);
 
     const int round = 10;
@@ -811,12 +833,6 @@ TEST(Routing, DynamicOptimalMix) {
         EXPECT_NE(ret, -1);
     }
 
-    for(int i = 0; i < num; i ++) {
-        ipv42s(ips[i], base_ip);
-        base_ip += ip_delta;
-        send_addhost(write_fd, ids[i], ips[i]);
-    }
-
     for(int i = 0; i < num; i ++)
         for(auto j : edge[i]) {
             if(i <= j.first) continue;
@@ -827,9 +843,20 @@ TEST(Routing, DynamicOptimalMix) {
     for(int i = 0; i < num; i ++) max_round = max(max_round, du[i] + 1);
     send_pretest(write_fd, read_fd, max_round);
 
+    for(int i = 0; i < num; i ++) {
+        ipv42s(ips[i], base_ip);
+        base_ip += ip_delta;
+        send_addhost(write_fd, ids[i], ips[i]);
+    }
+
+    max_round = 0;
+    for(int i = 0; i < num; i ++) max_round = max(max_round, du[i] + 1);
+    send_pretest(write_fd, read_fd, max_round);
+
     char payload[64];
     srand(time(NULL));
-    for(int i = 0; i < 63; i ++) payload[i] = rand() % 26 + 'a'; payload[63] = 0;
+    for(int i = 0; i < 63; i ++) payload[i] = rand() % 26 + 'a'; 
+    payload[63] = 0;
     srand(20221122);
 
     const int round = 25;
@@ -942,7 +969,8 @@ TEST(NAT, Basic) {
     send_pretest(write_fd, read_fd, 2);
     char payload[64], res_src[256], res_dst[256], res_payload[256];
     srand(time(NULL));
-    for(int i = 0; i < 63; i ++) payload[i] = rand() % 26 + 'a'; payload[63] = 0;
+    for(int i = 0; i < 63; i ++) payload[i] = rand() % 26 + 'a'; 
+    payload[63] = 0;
     srand(20221122);
 
     for(int i = 0; i < 5; i ++) {
@@ -1005,7 +1033,8 @@ TEST(NAT, Dynamic) {
     send_pretest(write_fd, read_fd, 2);
     char payload[64], res_src[256], res_dst[256], res_payload[256];
     srand(time(NULL));
-    for(int i = 0; i < 63; i ++) payload[i] = rand() % 26 + 'a'; payload[63] = 0;
+    for(int i = 0; i < 63; i ++) payload[i] = rand() % 26 + 'a'; 
+    payload[63] = 0;
     srand(20221122);
 
     set<string> unique_avail;
@@ -1070,22 +1099,23 @@ TEST(General, Static) {
     ASSERT_EQ(prepare(read_fd, write_fd, controller_pid), 0);
     srand(20221122);
 
-    const int level = 12;
-    const int num_pl = 8;
-    const int edge_pn = 4;
+    const int level = 8;
+    const int num_pl = 6;
+    const int edge_pn = 2;
     const int max_value = 100;
     map<int, int> edge[level][num_pl];
     int du[level][num_pl];
     memset(du, 0, sizeof(du));
 
     for(int i = 0; i < level - 1; i ++)
-        for(int j = 0; j < num_pl; j ++) {
-            int x = rand() % num_pl;
-            while(edge[i][j].count(x)) x = rand() % num_pl;
-            edge[i][j][x] = rand() % max_value + 1;
-            du[i][j] ++;
-            du[i + 1][x] ++;
-        }
+        for(int j = 0; j < num_pl; j ++)
+            for(int k = 0; k < edge_pn; k ++) {
+                int x = rand() % num_pl;
+                while(edge[i][j].count(x)) x = rand() % num_pl;
+                edge[i][j][x] = rand() % max_value + 1;
+                du[i][j] ++;
+                du[i + 1][x] ++;
+            }
 
     int ids[level][num_pl], max_round = 0;
     char ips[level][num_pl][255];
@@ -1125,17 +1155,21 @@ TEST(General, Static) {
         for(int j = 0; j < num_pl; j ++)
             send_addhost(write_fd, ids[i][j], ips[i][j]);
 
-    for(int i = 0; i < level - 1; i ++)
+    send_pretest(write_fd, read_fd, max_round);
+
+    for(int i = 0; i < level - 1; i ++) {
         for(int j = 0; j < num_pl; j ++)
             for(auto p : edge[i][j]) {
                 int y = p.first, v = p.second;
                 send_link(write_fd, ids[i][j], ids[i + 1][y], v);
+                send_pretest(write_fd, read_fd, max_round);
             }
+    }
 
-    send_pretest(write_fd, read_fd, max_round);
     char payload[64];
     srand(time(NULL));
-    for(int i = 0; i < 63; i ++) payload[i] = rand() % 26 + 'a'; payload[63] = 0;
+    for(int i = 0; i < 63; i ++) payload[i] = rand() % 26 + 'a'; 
+    payload[63] = 0;
     srand(20221122);
 
     int dis[123][123];
