@@ -143,8 +143,8 @@ int prepare(int &read_fd, int &write_fd, int &controller_pid) {
 
 static int send(int fd, const char* buf, int len) {
     int times = 0, ret;
-    while(times ++ < 2000 && (ret = write(fd, buf, len)) == -1) usleep(5000);
-    if(times == 2000) cerr << "GTest: send to simulator failed, simulator may too slow or no response" << endl;
+    while(times ++ < 100000 && (ret = write(fd, buf, len)) == -1) usleep(100);
+    if(times == 100000) cerr << "GTest: send to simulator failed, simulator may too slow or no response" << endl;
     return ret;
 }
 
@@ -228,8 +228,8 @@ static void send_extersend(int fd, int router, const char* src, const char* dst,
 
 static int recv(int fd, char* buf) {
     int times = 0, ret;
-    while(times ++ < 2000 && (ret = read(fd, buf, 9999)) == -1) usleep(5000);
-    if(times == 2000) cerr << "GTest: read from simulator failed, simulator may too slow or no response" << endl;
+    while(times ++ < 100000 && (ret = read(fd, buf, 9999)) == -1) usleep(100);
+    if(times == 100000) cerr << "GTest: read from simulator failed, simulator may too slow or no response" << endl;
     return ret;
 }
 
@@ -787,7 +787,7 @@ TEST(Routing, DynamicOptimalMix) {
         du[fa] ++;
     }
 
-    const int ap_edge = 300;
+    const int ap_edge = 200;
     vector<pair<int, int> > ap_edges;
 
     for(int i = 0; i < ap_edge; i ++) {
