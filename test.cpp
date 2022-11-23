@@ -54,6 +54,11 @@ static bool is_sub_addr(char* ip, char* addr_with_mask) {
 static const uint32_t ip_delta = (1 << 24);
 static const uint32_t ip_delta2 = (1 << 16);
 
+void sigpipe_handler(int signum) {
+    cerr << "GTest: received SIGPIPE signal, sub-process may crashed" << endl;
+    exit(-1);
+}
+
 pid_t start_controller(int &read_fd, int &write_fd) {
     int read_fds[2], write_fds[2];
     if(pipe(read_fds) != 0) {
@@ -1257,5 +1262,6 @@ TEST(General, Static) {
 
 int _tmain(int argc, wchar_t* argv[]) {
     testing::InitGoogleTest(&argc, argv);
+    signal(SIGPIPE, sigpipe_handler);
     return RUN_ALL_TESTS();
 }
