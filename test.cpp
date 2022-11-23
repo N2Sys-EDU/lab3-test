@@ -147,6 +147,34 @@ int prepare(int &read_fd, int &write_fd, int &controller_pid) {
     return 0;
 }
 
+static void output_error_info(int error_num) {
+    switch (error_num) {
+    case -1:
+        cerr << endl << "GTest: test command error, please report to TA" << endl << endl;
+        break;
+    case -2:
+        cerr << endl << "GTest: no route to destination" << endl << endl;
+        break;
+    case -3:
+        cerr << endl << "GTest: router sent a broadcast packet while forwarding data pakcet" << endl << endl;
+        break;
+    case -4:
+        cerr << endl << "GTest: router dropped packet while forwarding data packet" << endl << endl;
+        break;
+    case -5:
+        cerr << endl << "GTest: router returned an invalid port number while forwarding data packet" << endl << endl;
+        break;
+    case -6:
+        cerr << endl << "GTest: too many hops while forwording data packet" << endl << endl;
+        break;
+    case -7:
+        cerr << endl << "GTest: packet sent to wrong destination" << endl << endl;
+        break;
+    default:
+        break;
+    }
+}
+
 static int send(int fd, const char* buf, int len) {
     int times = 0, ret;
     while(times ++ < 100000 && (ret = write(fd, buf, len)) == -1) usleep(100);
@@ -300,12 +328,17 @@ TEST(Routing, Forward) {
             if(i == j) continue;
             send_hostsend(write_fd, ips[i], ips[j], payload);
             recv_hostsend(read_fd, ret, src, res_payload);
+            if(ret < 0) output_error_info(ret);
             ASSERT_EQ(ret, 0);
             ASSERT_EQ(strcmp(payload, res_payload), 0);
         }
     
     send_hostsend(write_fd, ips[0], ips[5], payload);
     recv_hostsend(read_fd, ret, src, res_payload);
+    if(ret != -2) {
+        output_error_info(ret);
+        cerr << "GTest: expect sending to controller" << endl;
+    }
     ASSERT_EQ(ret, -2);
 
     send_exit(write_fd);
@@ -410,6 +443,7 @@ TEST(Routing, Accessibility) {
         while(y == x) y = rand() % num1;
         send_hostsend(write_fd, ips[0][x], ips[0][y], payload);
         recv_hostsend(read_fd, ret, src, res_payload);
+        if(ret < 0) output_error_info(ret);
         ASSERT_GE(ret, 0);
         ASSERT_EQ(strcmp(payload, res_payload), 0);
         ASSERT_EQ(strcmp(src, ips[0][x]), 0);
@@ -419,6 +453,7 @@ TEST(Routing, Accessibility) {
         while(y == x) y = rand() % num2;
         send_hostsend(write_fd, ips[1][x], ips[1][y], payload);
         recv_hostsend(read_fd, ret, src, res_payload);
+        if(ret < 0) output_error_info(ret);
         ASSERT_GE(ret, 0);
         ASSERT_EQ(strcmp(payload, res_payload), 0);
     }
@@ -426,6 +461,10 @@ TEST(Routing, Accessibility) {
         int x = rand() % num1, y = rand() % num2;
         send_hostsend(write_fd, ips[0][x], ips[1][y], payload);
         recv_hostsend(read_fd, ret, src, res_payload);
+        if(ret != -2) {
+            output_error_info(ret);
+            cerr << "GTest: expect sending to controller" << endl;
+        }
         ASSERT_EQ(ret, -2);
     }
 
@@ -529,10 +568,17 @@ TEST(Routing, StaticOptimal) {
         recv_hostsend(read_fd, ret, src, res_payload);
         int ans = dis[ids[x1][y1]][ids[x2][y2]];
         if(ans < inf) { 
+            if(ret < 0) output_error_info(ret);
             ASSERT_EQ(ret, ans);
             ASSERT_EQ(strcmp(payload, res_payload), 0);
         }
-        else ASSERT_EQ(ret, -2);
+        else {
+            if(ret != -2) {
+                output_error_info(ret);
+                cerr << "GTest: expect sending to controller" << endl;
+            }
+            ASSERT_EQ(ret, -2);
+        }
     }
 
     send_exit(write_fd);
@@ -645,8 +691,17 @@ TEST(Routing, DynamicOptimalAdd) {
             send_hostsend(write_fd, ips[x], ips[y], payload);
             recv_hostsend(read_fd, ret, src, res_payload);
             int ans = dis[x][y];
-            if(ans < inf) ASSERT_EQ(ret, ans);
-            else ASSERT_EQ(ret, -2);
+            if(ans < inf) {
+                if(ret < 0) output_error_info(ret);
+                ASSERT_EQ(ret, ans);
+            }
+            else {
+                if(ret != -2) {
+                    output_error_info(ret);
+                    cerr << "GTest: expect sending to controller" << endl;
+                }
+                ASSERT_EQ(ret, -2);
+            }
             ASSERT_EQ(strcmp(payload, res_payload), 0);
         }
     }
@@ -776,8 +831,17 @@ TEST(Routing, DynamicOptimalDel) {
             send_hostsend(write_fd, ips[x], ips[y], payload);
             recv_hostsend(read_fd, ret, src, res_payload);
             int ans = dis[x][y];
-            if(ans < inf) ASSERT_EQ(ret, ans);
-            else ASSERT_EQ(ret, -2);
+            if(ans < inf) {
+                if(ret < 0) output_error_info(ret);
+                ASSERT_EQ(ret, ans);
+            }
+            else {
+                if(ret != -2) {
+                    output_error_info(ret);
+                    cerr << "GTest: expect sending to controller" << endl;
+                }
+                ASSERT_EQ(ret, -2);
+            }
             ASSERT_EQ(strcmp(payload, res_payload), 0);
         }
     }
@@ -943,8 +1007,17 @@ TEST(Routing, DynamicOptimalMix) {
             send_hostsend(write_fd, ips[x], ips[y], payload);
             recv_hostsend(read_fd, ret, src, res_payload);
             int ans = dis[x][y];
-            if(ans < inf) ASSERT_EQ(ret, ans);
-            else ASSERT_EQ(ret, -2);
+            if(ans < inf) {
+                if(ret < 0) output_error_info(ret);
+                ASSERT_EQ(ret, ans);
+            }
+            else {
+                if(ret != -2) {
+                    output_error_info(ret);
+                    cerr << "GTest: expect sending to controller" << endl;
+                }
+                ASSERT_EQ(ret, -2);
+            }
             ASSERT_EQ(strcmp(payload, res_payload), 0);
         }
     }
@@ -982,6 +1055,7 @@ TEST(NAT, Basic) {
     for(int i = 0; i < 5; i ++) {
         send_hostsend(write_fd, ips[i], exter_ips[i % 2], payload);
         recv_hostsend(read_fd, ret, avail_ips[i], res_payload);
+        if(ret < 0) output_error_info(ret);
         ASSERT_EQ(ret, 0);
         ASSERT_EQ(strcmp(payload, res_payload), 0);
         ASSERT_EQ(is_sub_addr(avail_ips[i], available_addr), true);
@@ -989,6 +1063,7 @@ TEST(NAT, Basic) {
     for(int i = 0; i < 5; i ++) {
         send_extersend(write_fd, id, exter_ips[i % 2], avail_ips[i], payload);
         recv_extersend(read_fd, ret, res_src, res_dst, res_payload);
+        if(ret < 0) output_error_info(ret);
         ASSERT_EQ(ret, 0);
         ASSERT_EQ(strcmp(res_dst, ips[i]), 0);
         ASSERT_EQ(strcmp(payload, res_payload), 0);
@@ -996,6 +1071,7 @@ TEST(NAT, Basic) {
     for(int i = 0; i < 5; i ++) {
         send_hostsend(write_fd, ips[i], exter_ips[i % 2], payload);
         recv_hostsend(read_fd, ret, res_src, res_payload);
+        if(ret < 0) output_error_info(ret);
         ASSERT_EQ(ret, 0);
         ASSERT_EQ(strcmp(res_src, avail_ips[i]), 0);
         ASSERT_EQ(strcmp(payload, res_payload), 0);
@@ -1003,6 +1079,10 @@ TEST(NAT, Basic) {
 
     send_extersend(write_fd, id, exter_ips[0], "10.0.0.0", payload);
     recv_extersend(read_fd, ret, res_src, res_dst, res_payload);
+    if(ret != -4) {
+        output_error_info(ret);
+        cerr << "GTest: expect dropping packet" << endl;
+    }
     ASSERT_EQ(ret, -4); // drop
 
     send_exit(write_fd);
@@ -1047,6 +1127,7 @@ TEST(NAT, Dynamic) {
     for(int i = 0; i < 256; i ++) {
         send_hostsend(write_fd, ips[i], exter_ip, payload);
         recv_hostsend(read_fd, ret, avail_ips[i], res_payload);
+        if(ret < 0) output_error_info(ret);
         ASSERT_EQ(ret, 0);
         ASSERT_EQ(strcmp(payload, res_payload), 0);
         ASSERT_EQ(is_sub_addr(avail_ips[i], available_addr), true);
@@ -1056,6 +1137,7 @@ TEST(NAT, Dynamic) {
     for(int i = 0; i < 256; i ++) {
         send_extersend(write_fd, id, exter_ip, avail_ips[i], payload);
         recv_extersend(read_fd, ret, res_src, res_dst, res_payload);
+        if(ret < 0) output_error_info(ret);
         ASSERT_EQ(ret, 0);
         ASSERT_EQ(strcmp(res_dst, ips[i]), 0);
         ASSERT_EQ(strcmp(payload, res_payload), 0);
@@ -1063,6 +1145,7 @@ TEST(NAT, Dynamic) {
     for(int i = 0; i < 256; i ++) {
         send_hostsend(write_fd, ips[i], exter_ip, payload);
         recv_hostsend(read_fd, ret, res_src, res_payload);
+        if(ret < 0) output_error_info(ret);
         ASSERT_EQ(ret, 0);
         ASSERT_EQ(strcmp(res_src, avail_ips[i]), 0);
         ASSERT_EQ(strcmp(payload, res_payload), 0);
@@ -1071,6 +1154,10 @@ TEST(NAT, Dynamic) {
     for(int i = 0; i < 5; i ++) {
         send_hostsend(write_fd, mips[i], exter_ip, payload);
         recv_hostsend(read_fd, ret, res_src, res_payload);
+        if(ret != -4) {
+            output_error_info(ret);
+            cerr << "GTest: expect dropping packet" << endl;
+        }
         ASSERT_EQ(ret, -4);
     }
 
@@ -1078,19 +1165,29 @@ TEST(NAT, Dynamic) {
     send_pretest(write_fd, read_fd, 2);
     send_extersend(write_fd, id, exter_ip, avail_ips[0], payload);
     recv_extersend(read_fd, ret, res_src, res_dst, res_payload);
+    if(ret != -4) {
+        output_error_info(ret);
+        cerr << "GTest: expect dropping packet" << endl;
+    }
     ASSERT_EQ(ret, -4);
     send_hostsend(write_fd, mips[0], exter_ip, payload);
     recv_hostsend(read_fd, ret, res_src, res_payload);
+    if(ret < 0) output_error_info(ret);
     ASSERT_EQ(ret, 0);
     ASSERT_EQ(strcmp(payload, res_payload), 0);
     ASSERT_EQ(strcmp(res_src, avail_ips[0]), 0);
     send_extersend(write_fd, id, exter_ip, avail_ips[0], payload);
     recv_extersend(read_fd, ret, res_src, res_dst, res_payload);
+    if(ret < 0) output_error_info(ret);
     ASSERT_EQ(ret, 0);
     ASSERT_EQ(strcmp(res_dst, mips[0]), 0);
     ASSERT_EQ(strcmp(payload, res_payload), 0);
     send_hostsend(write_fd, mips[2], exter_ip, payload);
     recv_hostsend(read_fd, ret, res_src, res_payload);
+    if(ret != -4) {
+        output_error_info(ret);
+        cerr << "GTest: expect dropping packet" << endl;
+    }
     ASSERT_EQ(ret, -4);
 
     send_exit(write_fd);
@@ -1214,10 +1311,17 @@ TEST(General, Static) {
         recv_hostsend(read_fd, ret, res_src, res_payload);
         int ans = dis[ids[x1][y1]][ids[x2][y2]];
         if(ans < inf) {
+            if(ret < 0) output_error_info(ret);
             ASSERT_EQ(ret, ans);
             ASSERT_EQ(strcmp(payload, res_payload), 0);
         }
-        else ASSERT_EQ(ret, -2);
+        else {
+            if(ret != -2) {
+                output_error_info(ret);
+                cerr << "GTest: expect sending to controller" << endl;
+            }
+            ASSERT_EQ(ret, -2);
+        }
     }
 
     char alloc_addr[level][num_pl][num_pl][255];
@@ -1230,13 +1334,20 @@ TEST(General, Static) {
         recv_hostsend(read_fd, ret, alloc_addr[i][j][k], res_payload);
         int ans = dis[ids[i][j]][ids[0][k]];
         if(ans < inf) {
+            if(ret < 0) output_error_info(ret);
             ASSERT_EQ(ret, ans);
             ASSERT_EQ(strcmp(payload, res_payload), 0);
             ASSERT_EQ(is_sub_addr(alloc_addr[i][j][k], available_addr[k]), true);
             ASSERT_EQ(unique_avail[k].count(string(alloc_addr[i][j][k])), 0);
             unique_avail[k].insert(string(alloc_addr[i][j][k]));
         }
-        else ASSERT_EQ(ret, -2);
+        else {
+            if(ret != -2) {
+                output_error_info(ret);
+                cerr << "GTest: expect sending to controller" << endl;
+            }
+            ASSERT_EQ(ret, -2);
+        }
     }
     for(int i = 0; i < level; i ++)
     for(int j = 0; j < num_pl; j ++)
@@ -1245,11 +1356,18 @@ TEST(General, Static) {
         recv_extersend(read_fd, ret, res_src, res_dst, res_payload);
         int ans = dis[ids[i][j]][ids[0][k]];
         if(ans < inf) {
+            if(ret < 0) output_error_info(ret);
             ASSERT_EQ(ret, ans);
             ASSERT_EQ(strcmp(res_dst, ips[i][j]), 0);
             ASSERT_EQ(strcmp(payload, res_payload), 0);
         }
-        else ASSERT_EQ(ret, -4);
+        else {
+            if(ret != -2) {
+                output_error_info(ret);
+                cerr << "GTest: expect sending to controller" << endl;
+            }
+            ASSERT_EQ(ret, -2);
+        }
     }
 
     send_exit(write_fd);
