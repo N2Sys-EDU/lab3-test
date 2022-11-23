@@ -143,6 +143,7 @@ int wait_exit(pid_t pid) {
 int prepare(int &read_fd, int &write_fd, int &controller_pid) {
     controller_pid = start_controller(read_fd, write_fd);
     if(controller_pid <= 0) return -1;
+    signal(SIGPIPE, sigpipe_handler);
     return 0;
 }
 
@@ -1262,6 +1263,5 @@ TEST(General, Static) {
 
 int _tmain(int argc, wchar_t* argv[]) {
     testing::InitGoogleTest(&argc, argv);
-    signal(SIGPIPE, sigpipe_handler);
     return RUN_ALL_TESTS();
 }
