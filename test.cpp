@@ -90,6 +90,9 @@ pid_t start_controller(int &read_fd, int &write_fd) {
         args[1] = "1";                          // test mode
         args[2] = to_string(write_fd).c_str();  // pass write fd 
         args[3] = nullptr;
+
+        system("killall simulator");
+
         if(execv("./simulator", (char* const*)args) == -1) {
             cerr << "GTest: failed to start simulator" << endl;
             exit(-1);
