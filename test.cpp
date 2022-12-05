@@ -17,17 +17,6 @@
 
 using namespace std;
 
-class GlobalTest:public testing::Environment {
-public:
-    void SetUp() {
-        cerr << "GTest: Lab3 test started" << endl;
-    }
-    void TearDown() {
-        system("killall simulator");
-        cerr << "GTest: Lab3 test finished" << endl;
-    }
-};
-
 static void s2ipv4(const char* addr, uint32_t &ipv4) {
     uint32_t a, b, c, d;
     sscanf(addr, "%u.%u.%u.%u", &a, &b, &c, &d);
@@ -157,6 +146,40 @@ int prepare(int &read_fd, int &write_fd, int &controller_pid) {
     signal(SIGPIPE, sigpipe_handler);
     return 0;
 }
+
+class Routing:public testing::Test {
+public:
+    int read_fd, write_fd, controller_pid;
+    void SetUp() {
+        ASSERT_EQ(prepare(read_fd, write_fd, controller_pid), 0);
+    }
+    void TearDown() {
+        clear_process_and_wait_exit(controller_pid);
+    }
+};
+
+class NAT:public testing::Test {
+public:
+    int read_fd, write_fd, controller_pid;
+    void SetUp() {
+        ASSERT_EQ(prepare(read_fd, write_fd, controller_pid), 0);
+    }
+    void TearDown() {
+        clear_process_and_wait_exit(controller_pid);
+    }
+};
+
+class General:public testing::Test {
+public:
+    int read_fd, write_fd, controller_pid;
+    void SetUp() {
+        ASSERT_EQ(prepare(read_fd, write_fd, controller_pid), 0);
+    }
+    void TearDown() {
+        clear_process_and_wait_exit(controller_pid);
+    }
+};
+
 
 static void output_error_info(int error_num) {
     switch (error_num) {
@@ -314,9 +337,7 @@ static void send_pretest(int write_fd, int read_fd, int max_round) {
 }
 
 /* Routing TEST will not use NAT */
-TEST(Routing, Forward) {
-    int read_fd, write_fd, controller_pid;
-    ASSERT_EQ(prepare(read_fd, write_fd, controller_pid), 0);
+TEST_F(Routing, Forward) {
     srand(20221122);
 
     send_new(write_fd, 6, 0, "0", "0");
@@ -357,9 +378,7 @@ TEST(Routing, Forward) {
     EXPECT_GE(retval, 0);
 }
 
-TEST(Routing, Accessibility) {
-    int read_fd, write_fd, controller_pid;
-    ASSERT_EQ(prepare(read_fd, write_fd, controller_pid), 0);
+TEST_F(Routing, Accessibility) {
     srand(20221122);
 
     const int num1 = 20;
@@ -484,11 +503,9 @@ TEST(Routing, Accessibility) {
     EXPECT_GE(retval, 0);
 }
 
-TEST(Routing, StaticOptimal) {
-    int read_fd, write_fd, controller_pid;
-    ASSERT_EQ(prepare(read_fd, write_fd, controller_pid), 0);
-
+TEST_F(Routing, StaticOptimal) {
     srand(20221122);
+
     const int level = 8;
     const int num_pl = 10;
     const int edge_pn = 2;
@@ -598,9 +615,7 @@ TEST(Routing, StaticOptimal) {
 }
 
 /* add edge on tree */
-TEST(Routing, DynamicOptimalAdd) {
-    int read_fd, write_fd, controller_pid;
-    ASSERT_EQ(prepare(read_fd, write_fd, controller_pid), 0);
+TEST_F(Routing, DynamicOptimalAdd) {
     srand(20221122);
 
     const int num = 20;
@@ -722,9 +737,7 @@ TEST(Routing, DynamicOptimalAdd) {
     EXPECT_GE(retval, 0);
 }
 
-TEST(Routing, DynamicOptimalDel) {
-    int read_fd, write_fd, controller_pid;
-    ASSERT_EQ(prepare(read_fd, write_fd, controller_pid), 0);
+TEST_F(Routing, DynamicOptimalDel) {
     srand(20221122);
 
     const int num = 20;
@@ -862,9 +875,7 @@ TEST(Routing, DynamicOptimalDel) {
     EXPECT_GE(retval, 0);
 }
 
-TEST(Routing, DynamicOptimalMix) {
-    int read_fd, write_fd, controller_pid;
-    ASSERT_EQ(prepare(read_fd, write_fd, controller_pid), 0);
+TEST_F(Routing, DynamicOptimalMix) {
     srand(20221122);
 
     const int num = 50;
@@ -1040,9 +1051,7 @@ TEST(Routing, DynamicOptimalMix) {
 
 /* NAT TEST will not check Routing Optimal */
 /* using only one router to test */
-TEST(NAT, Basic) {
-    int read_fd, write_fd, controller_pid;
-    ASSERT_EQ(prepare(read_fd, write_fd, controller_pid), 0);
+TEST_F(NAT, Basic) {
     srand(20221122);
 
     char external_addr[256] = "22.11.21.0/24";
@@ -1102,9 +1111,7 @@ TEST(NAT, Basic) {
 }
 
 /* considering release command */
-TEST(NAT, Dynamic) {
-    int read_fd, write_fd, controller_pid;
-    ASSERT_EQ(prepare(read_fd, write_fd, controller_pid), 0);
+TEST_F(NAT, Dynamic) {
     srand(20221122);
 
     char external_addr[256] = "22.11.21.0/24";
@@ -1208,9 +1215,7 @@ TEST(NAT, Dynamic) {
 
 /* Mix Routing and NAT together */
 /* No modification */
-TEST(General, Static) {
-    int read_fd, write_fd, controller_pid;
-    ASSERT_EQ(prepare(read_fd, write_fd, controller_pid), 0);
+TEST_F(General, Static) {
     srand(20221122);
 
     const int level = 8;
@@ -1386,13 +1391,11 @@ TEST(General, Static) {
     EXPECT_GE(retval, 0);
 }
 
-// TEST(General, Dynamic1) {}
+// TEST_F(General, Dynamic1) {}
 
-// TEST(General, Dynamic2) {}
+// TEST_F(General, Dynamic2) {}
 
 int _tmain(int argc, wchar_t* argv[]) {
     testing::InitGoogleTest(&argc, argv);
-    GlobalTest* env = new GlobalTest();
-    testing::AddGlobalTestEnvironment(env);
     return RUN_ALL_TESTS();
 }
