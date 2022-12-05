@@ -17,6 +17,17 @@
 
 using namespace std;
 
+class GlobalTest:public testing::Environment {
+public:
+    void SetUp() {
+        cerr << "GTest: Lab3 test started" << endl;
+    }
+    void TearDown() {
+        system("killall simulator");
+        cerr << "GTest: Lab3 test finished" << endl;
+    }
+};
+
 static void s2ipv4(const char* addr, uint32_t &ipv4) {
     uint32_t a, b, c, d;
     sscanf(addr, "%u.%u.%u.%u", &a, &b, &c, &d);
@@ -90,9 +101,6 @@ pid_t start_controller(int &read_fd, int &write_fd) {
         args[1] = "1";                          // test mode
         args[2] = to_string(write_fd).c_str();  // pass write fd 
         args[3] = nullptr;
-
-        system("killall simulator");
-
         if(execv("./simulator", (char* const*)args) == -1) {
             cerr << "GTest: failed to start simulator" << endl;
             exit(-1);
@@ -1384,5 +1392,7 @@ TEST(General, Static) {
 
 int _tmain(int argc, wchar_t* argv[]) {
     testing::InitGoogleTest(&argc, argv);
+    GlobalTest* env = new GlobalTest();
+    testing::AddGlobalTestEnvironment(env);
     return RUN_ALL_TESTS();
 }
