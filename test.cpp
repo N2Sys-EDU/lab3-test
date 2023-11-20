@@ -169,6 +169,17 @@ public:
     }
 };
 
+class FireWall: public testing::Test {
+public:
+    int read_fd, write_fd, controller_pid;
+    void SetUp() {
+        ASSERT_EQ(prepare(read_fd, write_fd, controller_pid), 0);
+    }
+    void TearDown() {
+        clear_process_and_wait_exit(controller_pid);
+    }
+};
+
 class General:public testing::Test {
 public:
     int read_fd, write_fd, controller_pid;
@@ -193,7 +204,7 @@ static void output_error_info(int error_num) {
         cerr << endl << "GTest: router sent a broadcast packet while forwarding data pakcet" << endl << endl;
         break;
     case -4:
-        cerr << endl << "GTest: router dropped packet while forwarding data packet" << endl << endl;
+        cerr << endl << "GTest: router unexpectedly dropped packet while forwarding data packet" << endl << endl;
         break;
     case -5:
         cerr << endl << "GTest: router returned an invalid port number while forwarding data packet" << endl << endl;
@@ -204,6 +215,9 @@ static void output_error_info(int error_num) {
     case -7:
         cerr << endl << "GTest: packet sent to wrong destination" << endl << endl;
         break;
+    //case -8:
+        //cerr << endl << "drop blocked packets normally" << endl;
+        //break; // this is a normal case
     default:
         break;
     }
@@ -257,6 +271,20 @@ static void send_weight(int fd, int router1, int router2, int weight) {
 static void send_addhost(int fd, int router, char* addr) {
     char buf[256];
     int len = sprintf(buf, "addhost %d %s\n", router, addr);
+    if(send(fd, buf, len) == -1)
+        return;
+}
+
+static void send_blockaddr(int fd, int router, char* addr) {
+    char buf[256];
+    int len = sprintf(buf, "blockaddr %d %s\n", router, addr);
+    if(send(fd, buf, len) == -1)
+        return;
+}
+
+static void send_unblockaddr(int fd, int router, char* addr) {
+    char buf[256];
+    int len = sprintf(buf, "unblockaddr %d %s\n", router, addr);
     if(send(fd, buf, len) == -1)
         return;
 }
@@ -1207,6 +1235,153 @@ TEST_F(NAT, Dynamic) {
         cerr << "GTest: expect dropping packet" << endl;
     }
     ASSERT_EQ(ret, -4);
+
+    send_exit(write_fd);
+    int retval = wait_exit(controller_pid);
+    EXPECT_GE(retval, 0);
+}
+
+/* FireWall TEST only check block and un block commands*/
+/* test internal block */
+TEST_F(FireWall, Block1){
+    srand(20231120);
+    send_new(write_fd, 6, 0, "0", "0");
+    int id, ret;
+    ret = recv_new(read_fd, id);
+    EXPECT_NE(ret, -1);
+
+    char ips[6][255] = {"10.0.0.0", "10.0.0.1", "10.0.0.2", "10.0.0.3", "10.0.0.4", "10.0.1.5"};
+    for(int i = 0; i < 5; i ++) send_addhost(write_fd, id, ips[i]);
+    send_pretest(write_fd, read_fd, 2);
+    char payload[64], res_src[256], res_payload[256];
+    srand(time(NULL));
+    for(int i = 0; i < 63; i ++) payload[i] = rand() % 26 + 'a'; 
+    payload[63] = 0;
+    srand(20231120);
+
+    send_blockaddr(write_fd, id, ips[0]);
+    send_pretest(write_fd, read_fd, 2);
+    for(int i = 1; i < 5; i ++) {
+        send_hostsend(write_fd, ips[i], ips[0], payload);
+        recv_hostsend(read_fd, ret, res_src, res_payload);
+        if(ret < 0) output_error_info(ret);
+        ASSERT_EQ(ret, 0);
+        ASSERT_EQ(strcmp(payload, res_payload), 0);
+    }
+    for(int i = 1; i < 5; i ++) {
+        send_hostsend(write_fd, ips[0], ips[i], payload);
+        recv_hostsend(read_fd, ret, res_src, res_payload);
+        if(ret!=-8) {
+            output_error_info(ret);
+            cerr << "GTest: expect dropping packet" << endl;
+        }
+        ASSERT_EQ(ret, -8);
+        ASSERT_EQ(strcmp(payload, res_payload), 0);
+    }
+    // reblock a blocked ip should not crash the router
+    send_blockaddr(write_fd, id, ips[0]);
+    send_blockaddr(write_fd, id, ips[0]);
+    send_pretest(write_fd, read_fd, 2);
+    // unblock a normal ip should not crash the router
+    send_unblockaddr(write_fd, id, ips[1]);
+    // block a non-exist ip should not crash the router
+    send_unblockaddr(write_fd, id, ips[5]);
+    send_unblockaddr(write_fd, id, ips[0]);
+    send_pretest(write_fd, read_fd, 3);
+    for(int i = 1; i < 5; i ++) {
+        send_hostsend(write_fd, ips[0], ips[i], payload);
+        recv_hostsend(read_fd, ret, res_src, res_payload);
+        if(ret < 0) output_error_info(ret);
+        ASSERT_EQ(ret, 0);
+        ASSERT_EQ(strcmp(payload, res_payload), 0);
+    }
+
+    send_exit(write_fd);
+    int retval = wait_exit(controller_pid);
+    EXPECT_GE(retval, 0);
+}
+
+/* test external block with NAT */
+TEST_F(FireWall, Block2){
+    srand(20231120);
+
+    char external_addr[256] = "22.11.21.0/24";
+    char available_addr[256] = "21.11.22.0/24";
+    send_new(write_fd, 7, 5, external_addr, available_addr);
+    int id, ret;
+    ret = recv_new(read_fd, id);
+    EXPECT_NE(ret, -1);
+
+    char ips[6][255] = {"10.0.0.0", "10.0.0.1", "10.0.0.2", "10.0.0.3", "10.0.0.4"};
+    char avail_ips[6][255];
+    char tmp_ip[255];
+    char exter_ips[2][255] = {"22.11.21.3", "22.11.21.253"};
+    for(int i = 0; i < 5; i ++) send_addhost(write_fd, id, ips[i]);
+    send_pretest(write_fd, read_fd, 2);
+    char payload[64], res_src[256], res_dst[256], res_payload[256];
+    srand(time(NULL));
+    for(int i = 0; i < 63; i ++) payload[i] = rand() % 26 + 'a'; 
+    payload[63] = 0;
+    srand(20231120);
+    
+    // internal send to externel
+    for(int i = 0; i < 5; i ++) {
+        send_hostsend(write_fd, ips[i], exter_ips[i % 2], payload);
+        recv_hostsend(read_fd, ret, avail_ips[i], res_payload);
+        if(ret < 0) output_error_info(ret);
+        ASSERT_EQ(ret, 0);
+        ASSERT_EQ(strcmp(payload, res_payload), 0);
+        ASSERT_EQ(is_sub_addr(avail_ips[i], available_addr), true);
+    }
+    for(int i = 0;i<5;++i){
+        send_blockaddr(write_fd, id, ips[i]);
+    }
+    send_pretest(write_fd, read_fd, 5);
+    for(int i = 0; i < 5; i ++) {
+        send_hostsend(write_fd, ips[i], exter_ips[i % 2], payload);
+        recv_hostsend(read_fd, ret, tmp_ip, res_payload);
+        if(ret != -8) output_error_info(ret);
+        ASSERT_EQ(ret, -8);
+        ASSERT_EQ(strcmp(payload, res_payload), 0);
+        ASSERT_EQ(strcmp(tmp_ip, ips[i]), 0);
+    }
+    send_unblockaddr(write_fd, id, ips[0]);
+    send_pretest(write_fd, read_fd, 2);
+    send_hostsend(write_fd, ips[0], exter_ips[0], payload);
+    recv_hostsend(read_fd, ret, tmp_ip, res_payload);
+    if(ret < 0) output_error_info(ret);
+    ASSERT_EQ(ret, 0);
+    ASSERT_EQ(strcmp(payload, res_payload), 0);
+    ASSERT_EQ(is_sub_addr(tmp_ip, available_addr), true);
+    
+    // external send to internal
+    for(int i = 0; i < 5; i ++) {
+        send_extersend(write_fd, id, exter_ips[i % 2], avail_ips[i], payload);
+        recv_extersend(read_fd, ret, res_src, res_dst, res_payload);
+        if(ret < 0) output_error_info(ret);
+        ASSERT_EQ(ret, 0);
+        ASSERT_EQ(strcmp(res_dst, ips[i]), 0);
+        ASSERT_EQ(strcmp(payload, res_payload), 0);
+    }
+    for(int j = 0;j<2;++j){
+        send_blockaddr(write_fd, id, exter_ips[j]);
+    }
+    send_pretest(write_fd, read_fd, 5);
+    for(int i = 0; i < 5; i ++) {
+        send_extersend(write_fd, id, exter_ips[i % 2], avail_ips[i], payload);
+        recv_extersend(read_fd, ret, res_src, res_dst, res_payload);
+        if(ret != -8) output_error_info(ret);
+        ASSERT_EQ(ret, -8);
+        ASSERT_EQ(strcmp(payload, res_payload), 0);
+    }
+    send_unblockaddr(write_fd, id, exter_ips[0]);
+    send_pretest(write_fd, read_fd, 2);
+    send_extersend(write_fd, id, exter_ips[0], avail_ips[0], payload);
+    recv_extersend(read_fd, ret, res_src, res_dst, res_payload);
+    if(ret < 0) output_error_info(ret);
+    ASSERT_EQ(ret, 0);
+    ASSERT_EQ(strcmp(payload, res_payload), 0);
+    ASSERT_EQ(strcmp(res_dst, ips[0]), 0);
 
     send_exit(write_fd);
     int retval = wait_exit(controller_pid);
