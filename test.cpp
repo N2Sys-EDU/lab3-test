@@ -270,21 +270,21 @@ static void send_weight(int fd, int router1, int router2, int weight) {
 
 static void send_addhost(int fd, int router, char* addr) {
     char buf[256];
-    int len = sprintf(buf, "addhost %d %s\n", router, addr);
+    int len = snprintf(buf, 255, "addhost %d %s\n", router, addr);
     if(send(fd, buf, len) == -1)
         return;
 }
 
 static void send_blockaddr(int fd, int router, char* addr) {
     char buf[256];
-    int len = sprintf(buf, "blockaddr %d %s\n", router, addr);
+    int len = snprintf(buf, 255, "blockaddr %d %s\n", router, addr);
     if(send(fd, buf, len) == -1)
         return;
 }
 
 static void send_unblockaddr(int fd, int router, char* addr) {
     char buf[256];
-    int len = sprintf(buf, "unblockaddr %d %s\n", router, addr);
+    int len = snprintf(buf, 255, "unblockaddr %d %s\n", router, addr);
     if(send(fd, buf, len) == -1)
         return;
 }
@@ -296,21 +296,21 @@ static void send_trigger(int fd) {
 
 static void send_release(int fd, int router, char* addr) {
     char buf[512];
-    int len = sprintf(buf, "release %d %s\n", router, addr);
+    int len = snprintf(buf, 511, "release %d %s\n", router, addr);
     if(send(fd, buf, len) == -1)
         return;
 }
 
 static void send_hostsend(int fd, char* src, char* dst, char* payload) {
     char buf[9999];
-    int len = sprintf(buf, "hostsend %s %s %s\n", src, dst, payload);
+    int len = snprintf(buf, 9998, "hostsend %s %s %s\n", src, dst, payload);
     if(send(fd, buf, len) == -1)
         return;
 }
 
 static void send_extersend(int fd, int router, const char* src, const char* dst, char* payload) {
     char buf[9999];
-    int len = sprintf(buf, "extersend %d %s %s %s\n", router, src, dst, payload);
+    int len = snprintf(buf, 9998, "extersend %d %s %s %s\n", router, src, dst, payload);
     if(send(fd, buf, len) == -1)
         return;
 }
