@@ -1567,12 +1567,503 @@ TEST_F(General, Static) {
 }
 
 /* Not available until deadline */
-//TEST_F(General, Dynamic1) {
-//}
+TEST_F(General, Dynamic1) {
+    srand(20240119);
 
-/* Not available until deadline */
-//TEST_F(General, Dynamic2) {
-//}
+    const int num = 50;
+    map<int, int> edge[123];
+    const int max_value = 200;
+
+    int du[123];
+    memset(du, 0, sizeof(du));
+
+    vector<pair<int, int> > ori_edges;
+    for(int i = 1; i < num; i ++) {
+        int fa = rand() % i;
+        int value = rand() % max_value + 1 + max_value;
+        edge[i][fa] = value;
+        edge[fa][i] = value;
+        du[i] ++;
+        du[fa] ++;
+        ori_edges.push_back(make_pair(i, fa));
+    }
+
+    const int ap_edge = 200;
+    vector<pair<int, int> > ap_edges;
+
+    for(int i = 0; i < ap_edge; i ++) {
+        int x = rand() % num;
+        int y = rand() % num;
+        while(x == y || edge[x].count(y)) {
+            x = rand() % num;
+            y = rand() % num;
+        }
+        int value = rand() % max_value + 1;
+        edge[x][y] = edge[y][x] = value;
+        ap_edges.push_back(make_pair(x,y));
+        du[x] ++;
+        du[y] ++;
+    }
+    random_shuffle(ap_edges.begin(), ap_edges.end());
+
+    int ids[123];
+    char ips[123][255];
+    char external_addr[123][255], available_addr[123][255];
+    char exter_addr[123][255];
+    uint32_t base_ip;
+
+    int max_round = 0;
+    for(int i = 0; i < num; i ++) max_round = max(max_round, du[i] + 1);
+
+    s2ipv4("22.11.21.0", base_ip);
+    for(int i = 0; i < num; i ++) {
+        ipv42s(external_addr[i], base_ip);
+        strcat(external_addr[i], "/29");
+        ipv42s(exter_addr[i], base_ip + ip_delta * 3);
+        base_ip += ip_delta2;
+    }
+    s2ipv4("21.11.22.0", base_ip);
+    for(int i = 0; i < num; i ++) {
+        ipv42s(available_addr[i], base_ip);
+        strcat(available_addr[i], "/30");
+        base_ip += ip_delta2;
+    }
+    s2ipv4("10.0.0.0", base_ip);
+    for(int i = 0; i < num; i ++) {
+        ipv42s(ips[i], base_ip);
+        base_ip += ip_delta;
+    }
+
+    for(int i = 0; i < num; i ++) {
+        send_new(write_fd, 3 + num, 3, external_addr[i], available_addr[i]);
+        int ret = recv_new(read_fd, ids[i]);
+        EXPECT_NE(ret, -1);
+    }
+
+    for(int i = 0; i < num; i ++)
+        for(auto j : edge[i]) {
+            if(i <= j.first) continue;
+            send_link(write_fd, ids[i], ids[j.first], j.second);
+        }
+    
+    send_pretest(write_fd, read_fd, max_round);
+
+    for(int i = 0; i < num; i ++)
+        send_addhost(write_fd, ids[i], ips[i]);
+
+    send_pretest(write_fd, read_fd, max_round);
+
+    char payload[64];
+    srand(time(NULL));
+    for(int i = 0; i < 63; i ++) payload[i] = rand() % 26 + 'a'; 
+    payload[63] = 0;
+    srand(20240119);
+
+    const int round = 10;
+    const int del_num = ap_edge / round;
+    const int add_num = del_num >> 1;
+    const int change_num = 5;
+    const int query_num = 50;
+    
+    char alloc_addr[123][123][31];
+    bool has_alloc[123][123];
+    memset(has_alloc, 0, sizeof(has_alloc));
+    set<string> unique_avail[123];
+
+    for(int t = 0; t < round; t ++) {
+        for(int r = 0; r < del_num; r ++) {
+            pair<int, int> item = *(ap_edges.end() - 1);
+            ap_edges.pop_back();
+            int x = item.first;
+            int y = item.second;
+            edge[x].erase(y);
+            edge[y].erase(x);
+            send_cut(write_fd, ids[x], ids[y]);
+            du[x] --;
+            du[y] --;
+        }
+        for(int r = 0; r < add_num; r ++) {
+            int x = rand() % num;
+            int y = rand() % num;
+            while(x == y || edge[x].count(y)) {
+                x = rand() % num;
+                y = rand() % num;
+            }
+            int value = rand() % max_value + 1;
+            edge[x][y] = edge[y][x] = value;
+            ap_edges.push_back(make_pair(x, y));
+            send_link(write_fd, ids[x], ids[y], value);
+            du[x] ++;
+            du[y] ++;
+        }
+        random_shuffle(ap_edges.begin(), ap_edges.end());
+
+        for(int r = 0; r < change_num; r ++) {
+            int select = rand() & 1;
+            int x, y, v = rand() % (max_value << 1) + 1;
+            if(select) {
+                int idx = rand() % ori_edges.size();
+                x = ori_edges[idx].first;
+                y = ori_edges[idx].second;
+            }
+            else {
+                int idx = rand() % ap_edges.size();
+                x = ap_edges[idx].first;
+                y = ap_edges[idx].second;
+            }
+            edge[x][y] = edge[y][x] = v;
+            send_weight(write_fd, ids[x], ids[y], v);
+        }
+
+        int max_round = 0;
+        for(int i = 0; i < num; i ++) max_round = max(max_round, du[i] + 1);
+
+        send_pretest(write_fd, read_fd, max_round);
+        int dis[123][123];
+        const int inf = 1e9;
+        {
+            for(int i = 0; i < num; i ++)
+                for(int j = 0; j < num; j ++) dis[i][j] = inf;
+            for(int i = 0; i < num; i ++) dis[i][i] = 0;
+            for(int i = 0; i < num; i ++)
+                for(auto j : edge[i]) dis[i][j.first] = j.second;
+            for(int k = 0; k < num; k ++)
+            for(int i = 0; i < num; i ++)
+            for(int j = 0; j < num; j ++) dis[i][j] = min(dis[i][j], dis[i][k] + dis[k][j]);
+        }
+
+        int ret;
+        char res_src[256], res_dst[256], res_payload[256];
+        char alloc_tmp[31];
+
+        int x = rand() % num;
+        for(int r = 0; r < query_num; r ++) {
+            int y = rand() % num;
+            while(x == y) y = rand() % num;
+            send_hostsend(write_fd, ips[x], exter_addr[y], payload);
+            recv_hostsend(read_fd, ret, alloc_tmp, res_payload);
+            if(unique_avail[y].size() == 4 && !has_alloc[x][y]) {
+                if(ret != -4) {
+                    output_error_info(ret);
+                    cerr << "GTest: expect dropping packet" << endl;
+                }
+                ASSERT_EQ(ret, -4);
+            }
+            else {
+                int ans = dis[x][y];
+                if(ans < inf) {
+                    if(ret < 0) output_error_info(ret);
+                    ASSERT_EQ(ret, ans);
+                    ASSERT_EQ(is_sub_addr(alloc_tmp, available_addr[y]), 1);
+                    if(has_alloc[x][y]) ASSERT_EQ(strcmp(alloc_tmp, alloc_addr[x][y]), 0);
+                    else {
+                        strcpy(alloc_addr[x][y], alloc_tmp);
+                        ASSERT_EQ(unique_avail[y].count(string(alloc_tmp)), 0);
+                        unique_avail[y].insert(string(alloc_tmp));
+                    }
+                    has_alloc[x][y] = 1;
+                }
+                else {
+                    if(ret != -2) {
+                        output_error_info(ret);
+                        cerr << "GTest: expect sending to controller" << endl;
+                    }
+                    ASSERT_EQ(ret, -2);
+                }
+                ASSERT_EQ(strcmp(payload, res_payload), 0);
+            }
+        }
+        for(int r = 0; r < query_num; r ++) {
+            int y = rand() % num;
+            while(x == y) y = rand() % num;
+            
+            if(has_alloc[x][y]) {
+                send_extersend(write_fd, ids[y], exter_addr[y], alloc_addr[x][y], payload);
+                recv_extersend(read_fd, ret, res_src, res_dst, res_payload);
+                int ans = dis[x][y];
+                if(ans < inf) {
+                    if(ret < 0) output_error_info(ret);
+                    ASSERT_EQ(ret, ans);
+                    ASSERT_EQ(strcmp(res_dst, ips[x]), 0);
+                }
+                else {
+                    if(ret != -2) {
+                        output_error_info(ret);
+                        cerr << "GTest: expect sending to controller" << endl;
+                    }
+                    ASSERT_EQ(ret, -2);
+                }
+                ASSERT_EQ(strcmp(payload, res_payload), 0);
+            }
+            else {
+                uint32_t ipv4;
+                char fake_addr[255];
+                s2ipv4(available_addr[y], ipv4);
+                ipv42s(fake_addr, ipv4 + ip_delta * 6);
+                send_extersend(write_fd, ids[y], exter_addr[y], fake_addr, payload);
+                recv_extersend(read_fd, ret, res_src, res_dst, res_payload);
+                if(ret != -4) {
+                    output_error_info(ret);
+                    cerr << "GTest: expect dropping packet" << endl;
+                }
+                ASSERT_EQ(ret, -4);
+            }
+        }
+    }
+
+    send_exit(write_fd);
+    int retval = wait_exit(controller_pid);
+    EXPECT_GE(retval, 0);
+}
+
+TEST_F(General, Dynamic2) {
+    srand(20240119);
+
+    const int num = 50;
+    map<int, int> edge[123];
+    const int max_value = 200;
+
+    int du[123];
+    memset(du, 0, sizeof(du));
+
+    vector<pair<int, int> > ori_edges;
+    for(int i = 1; i < num; i ++) {
+        int fa = rand() % i;
+        int value = rand() % max_value + 1 + max_value;
+        edge[i][fa] = value;
+        edge[fa][i] = value;
+        du[i] ++;
+        du[fa] ++;
+        ori_edges.push_back(make_pair(i, fa));
+    }
+
+    const int ap_edge = 200;
+    vector<pair<int, int> > ap_edges;
+
+    for(int i = 0; i < ap_edge; i ++) {
+        int x = rand() % num;
+        int y = rand() % num;
+        while(x == y || edge[x].count(y)) {
+            x = rand() % num;
+            y = rand() % num;
+        }
+        int value = rand() % max_value + 1;
+        edge[x][y] = edge[y][x] = value;
+        ap_edges.push_back(make_pair(x,y));
+        du[x] ++;
+        du[y] ++;
+    }
+    random_shuffle(ap_edges.begin(), ap_edges.end());
+
+    int ids[123];
+    char ips[123][255];
+    char external_addr[123][255], available_addr[123][255];
+    char exter_addr[123][255];
+    uint32_t base_ip;
+
+    int max_round = 0;
+    for(int i = 0; i < num; i ++) max_round = max(max_round, du[i] + 1);
+
+    s2ipv4("22.11.21.0", base_ip);
+    for(int i = 0; i < num; i ++) {
+        ipv42s(external_addr[i], base_ip);
+        strcat(external_addr[i], "/29");
+        ipv42s(exter_addr[i], base_ip + ip_delta * 3);
+        base_ip += ip_delta2;
+    }
+    s2ipv4("21.11.22.0", base_ip);
+    for(int i = 0; i < num; i ++) {
+        ipv42s(available_addr[i], base_ip);
+        strcat(available_addr[i], "/30");
+        base_ip += ip_delta2;
+    }
+    s2ipv4("10.0.0.0", base_ip);
+    for(int i = 0; i < num; i ++) {
+        ipv42s(ips[i], base_ip);
+        base_ip += ip_delta;
+    }
+
+    for(int i = 0; i < num; i ++) {
+        send_new(write_fd, 3 + num, 3, external_addr[i], available_addr[i]);
+        int ret = recv_new(read_fd, ids[i]);
+        EXPECT_NE(ret, -1);
+    }
+
+    for(int i = 0; i < num; i ++)
+        for(auto j : edge[i]) {
+            if(i <= j.first) continue;
+            send_link(write_fd, ids[i], ids[j.first], j.second);
+        }
+    
+    send_pretest(write_fd, read_fd, max_round);
+
+    for(int i = 0; i < num; i ++)
+        send_addhost(write_fd, ids[i], ips[i]);
+
+    send_pretest(write_fd, read_fd, max_round);
+
+    char payload[64];
+    srand(time(NULL));
+    for(int i = 0; i < 63; i ++) payload[i] = rand() % 26 + 'a'; 
+    payload[63] = 0;
+    srand(20240119);
+
+    const int round = 10;
+    const int del_num = ap_edge / round;
+    const int add_num = del_num >> 1;
+    const int change_num = 5;
+    const int query_num = 50;
+    
+    char alloc_addr[123][123][31];
+    bool has_alloc[123][123];
+    memset(has_alloc, 0, sizeof(has_alloc));
+    set<string> unique_avail[123];
+
+    for(int t = 0; t < round; t ++) {
+        for(int r = 0; r < del_num; r ++) {
+            pair<int, int> item = *(ap_edges.end() - 1);
+            ap_edges.pop_back();
+            int x = item.first;
+            int y = item.second;
+            edge[x].erase(y);
+            edge[y].erase(x);
+            send_cut(write_fd, ids[x], ids[y]);
+            du[x] --;
+            du[y] --;
+        }
+        for(int r = 0; r < add_num; r ++) {
+            int x = rand() % num;
+            int y = rand() % num;
+            while(x == y || edge[x].count(y)) {
+                x = rand() % num;
+                y = rand() % num;
+            }
+            int value = rand() % max_value + 1;
+            edge[x][y] = edge[y][x] = value;
+            ap_edges.push_back(make_pair(x, y));
+            send_link(write_fd, ids[x], ids[y], value);
+            du[x] ++;
+            du[y] ++;
+        }
+        random_shuffle(ap_edges.begin(), ap_edges.end());
+
+        for(int r = 0; r < change_num; r ++) {
+            int select = rand() & 1;
+            int x, y, v = rand() % (max_value << 1) + 1;
+            if(select) {
+                int idx = rand() % ori_edges.size();
+                x = ori_edges[idx].first;
+                y = ori_edges[idx].second;
+            }
+            else {
+                int idx = rand() % ap_edges.size();
+                x = ap_edges[idx].first;
+                y = ap_edges[idx].second;
+            }
+            edge[x][y] = edge[y][x] = v;
+            send_weight(write_fd, ids[x], ids[y], v);
+        }
+
+        int max_round = 0;
+        for(int i = 0; i < num; i ++) max_round = max(max_round, du[i] + 1);
+
+        send_pretest(write_fd, read_fd, max_round);
+        int dis[123][123];
+        const int inf = 1e9;
+        {
+            for(int i = 0; i < num; i ++)
+                for(int j = 0; j < num; j ++) dis[i][j] = inf;
+            for(int i = 0; i < num; i ++) dis[i][i] = 0;
+            for(int i = 0; i < num; i ++)
+                for(auto j : edge[i]) dis[i][j.first] = j.second;
+            for(int k = 0; k < num; k ++)
+            for(int i = 0; i < num; i ++)
+            for(int j = 0; j < num; j ++) dis[i][j] = min(dis[i][j], dis[i][k] + dis[k][j]);
+        }
+
+        int ret;
+        char res_src[256], res_dst[256], res_payload[256];
+        char alloc_tmp[31];
+
+        int x = rand() % num;
+        for(int r = 0; r < query_num; r ++) {
+            int y = rand() % num;
+            while(x == y) y = rand() % num;
+            send_hostsend(write_fd, ips[x], exter_addr[y], payload);
+            recv_hostsend(read_fd, ret, alloc_tmp, res_payload);
+            if(unique_avail[y].size() == 4 && !has_alloc[x][y]) {
+                if(ret != -4) {
+                    output_error_info(ret);
+                    cerr << "GTest: expect dropping packet" << endl;
+                }
+                ASSERT_EQ(ret, -4);
+            }
+            else {
+                int ans = dis[x][y];
+                if(ans < inf) {
+                    if(ret < 0) output_error_info(ret);
+                    ASSERT_EQ(ret, ans);
+                    ASSERT_EQ(is_sub_addr(alloc_tmp, available_addr[y]), 1);
+                    if(has_alloc[x][y]) ASSERT_EQ(strcmp(alloc_tmp, alloc_addr[x][y]), 0);
+                    else {
+                        strcpy(alloc_addr[x][y], alloc_tmp);
+                        ASSERT_EQ(unique_avail[y].count(string(alloc_tmp)), 0);
+                        unique_avail[y].insert(string(alloc_tmp));
+                    }
+                    has_alloc[x][y] = 1;
+                }
+                else {
+                    if(ret != -2) {
+                        output_error_info(ret);
+                        cerr << "GTest: expect sending to controller" << endl;
+                    }
+                    ASSERT_EQ(ret, -2);
+                }
+                ASSERT_EQ(strcmp(payload, res_payload), 0);
+            }
+        }
+        for(int r = 0; r < query_num; r ++) {
+            int y = rand() % num;
+            while(x == y) y = rand() % num;
+            
+            if(has_alloc[x][y]) {
+                send_extersend(write_fd, ids[y], exter_addr[y], alloc_addr[x][y], payload);
+                recv_extersend(read_fd, ret, res_src, res_dst, res_payload);
+                int ans = dis[x][y];
+                if(ans < inf) {
+                    if(ret < 0) output_error_info(ret);
+                    ASSERT_EQ(ret, ans);
+                    ASSERT_EQ(strcmp(res_dst, ips[x]), 0);
+                }
+                else {
+                    if(ret != -2) {
+                        output_error_info(ret);
+                        cerr << "GTest: expect sending to controller" << endl;
+                    }
+                    ASSERT_EQ(ret, -2);
+                }
+                ASSERT_EQ(strcmp(payload, res_payload), 0);
+            }
+            else {
+                uint32_t ipv4;
+                char fake_addr[255];
+                s2ipv4(available_addr[y], ipv4);
+                ipv42s(fake_addr, ipv4 + ip_delta * 6);
+                send_extersend(write_fd, ids[y], exter_addr[y], fake_addr, payload);
+                recv_extersend(read_fd, ret, res_src, res_dst, res_payload);
+                if(ret != -4) {
+                    output_error_info(ret);
+                    cerr << "GTest: expect dropping packet" << endl;
+                }
+                ASSERT_EQ(ret, -4);
+            }
+        }
+    }
+
+    send_exit(write_fd);
+    int retval = wait_exit(controller_pid);
+    EXPECT_GE(retval, 0);
+}
 
 int _tmain(int argc, wchar_t* argv[]) {
     testing::InitGoogleTest(&argc, argv);
